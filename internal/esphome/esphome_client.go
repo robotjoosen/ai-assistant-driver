@@ -5,6 +5,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"errors"
+	"io"
 	"log/slog"
 	"net"
 	"sync"
@@ -16,8 +18,24 @@ import (
 )
 
 const (
+	msgHelloRequest           = 1
+	msgHelloResponse          = 2
+	msgConnectRequest         = 3
+	msgConnectResponse        = 4
+	msgDisconnectRequest      = 5
+	msgDisconnectResponse     = 6
+	msgPingRequest            = 7
+	msgPingResponse           = 8
+	msgDeviceInfoRequest      = 9
+	msgDeviceInfoResponse     = 10
+	msgListEntitiesRequest    = 11
+	msgListEntitiesResponse   = 19
+	msgSubscribeStatesRequest = 20
+	msgSubscribeLogsRequest   = 28
+
 	msgSubscribeVoiceAssistant = 89
 	msgVoiceAssistantRequest   = 90
+	msgVoiceAssistantResponse  = 91
 	msgVoiceAssistantEvent     = 92
 	msgVoiceAssistantAudio     = 106
 )
@@ -102,13 +120,119 @@ func (c *ESPHomeClient) readLoop(reader *bufio.Reader) {
 		case <-c.stopChan:
 			return
 		default:
-			msg, err := c.apiConn.Read(reader)
+			msg, err := c.readRawMessage(reader)
 			if err != nil {
+				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+					c.logger.Info("connection closed")
+					return
+				}
 				c.logger.Error("read error", "error", err)
 				return
 			}
 			c.routeMessage(msg)
 		}
+	}
+}
+
+func (c *ESPHomeClient) readRawMessage(reader *bufio.Reader) (proto.Message, error) {
+	preamble, err := reader.ReadByte()
+	if err != nil {
+		return nil, err
+	}
+
+	length, err := readUvarint(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	typeID, err := readUvarint(reader)
+	if err != nil {
+		return nil, err
+	}
+
+	data := make([]byte, length)
+	if _, err := io.ReadFull(reader, data); err != nil {
+		return nil, err
+	}
+
+	c.logger.Debug("received raw message", "preamble", preamble, "typeID", typeID, "length", length)
+
+	msg := getMessageForTypeID(typeID)
+	if msg == nil {
+		c.logger.Warn("unknown message type", "typeID", typeID)
+		return nil, nil
+	}
+
+	if err := proto.Unmarshal(data, msg); err != nil {
+		c.logger.Error("failed to unmarshal message", "typeID", typeID, "error", err)
+		return nil, err
+	}
+
+	return msg, nil
+}
+
+func readUvarint(reader *bufio.Reader) (uint64, error) {
+	var x uint64
+	var s uint
+	for i := 0; ; i++ {
+		b, err := reader.ReadByte()
+		if err != nil {
+			return 0, err
+		}
+		if b < 0x80 {
+			return x | uint64(b)<<s, nil
+		}
+		x |= uint64(b&0x7f) << s
+		s += 7
+		if i > 10 {
+			return 0, errors.New("varint too long")
+		}
+	}
+}
+
+func getMessageForTypeID(typeID uint64) proto.Message {
+	switch typeID {
+	case msgHelloRequest:
+		return &api.HelloRequest{}
+	case msgHelloResponse:
+		return &api.HelloResponse{}
+	case msgConnectRequest:
+		return &api.ConnectRequest{}
+	case msgConnectResponse:
+		return &api.ConnectResponse{}
+	case msgDisconnectRequest:
+		return &api.DisconnectRequest{}
+	case msgDisconnectResponse:
+		return &api.DisconnectResponse{}
+	case msgPingRequest:
+		return &api.PingRequest{}
+	case msgPingResponse:
+		return &api.PingResponse{}
+	case msgDeviceInfoRequest:
+		return &api.DeviceInfoRequest{}
+	case msgDeviceInfoResponse:
+		return &api.DeviceInfoResponse{}
+	case msgListEntitiesRequest:
+		return &api.ListEntitiesRequest{}
+	case msgListEntitiesResponse:
+		// ListEntities returns multiple response types - use a placeholder
+		return &api.ListEntitiesDoneResponse{}
+	case msgSubscribeStatesRequest:
+		return &api.SubscribeStatesRequest{}
+	case msgSubscribeLogsRequest:
+		return &api.SubscribeLogsRequest{}
+	case msgSubscribeVoiceAssistant:
+		return &api.SubscribeVoiceAssistantRequest{}
+	case msgVoiceAssistantRequest:
+		return &api.VoiceAssistantRequest{}
+	case msgVoiceAssistantResponse:
+		return &api.VoiceAssistantResponse{}
+	case msgVoiceAssistantEvent:
+		return &api.VoiceAssistantEventResponse{}
+	case msgVoiceAssistantAudio:
+		return &api.VoiceAssistantAudio{}
+	default:
+		return nil
 	}
 }
 
@@ -158,7 +282,7 @@ func (c *ESPHomeClient) Hello() error {
 
 	_, err := c.sendAndWaitForResponse(&api.HelloRequest{
 		ClientInfo: c.clientID,
-	}, 2)
+	}, msgHelloResponse)
 	if err != nil {
 		c.logger.Error("Hello failed", "error", err)
 		return err
@@ -173,7 +297,7 @@ func (c *ESPHomeClient) Login(password string) error {
 
 	_, err := c.sendAndWaitForResponse(&api.ConnectRequest{
 		Password: password,
-	}, 3)
+	}, msgConnectResponse)
 	if err != nil {
 		c.logger.Warn("Login failed (continuing anyway)", "error", err)
 		return err
@@ -237,8 +361,25 @@ func (c *ESPHomeClient) sendWithTypeID(msgTypeID uint64, msg proto.Message) erro
 	frame := buf.Bytes()
 	c.logger.Debug("→ sending raw message", "typeID", msgTypeID, "type", proto.MessageName(msg), "size", len(data), "frame", formatHex(frame))
 
+	c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	if _, err := c.conn.Write(frame); err != nil {
 		c.logger.Error("send failed", "type", proto.MessageName(msg), "error", err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *ESPHomeClient) SendMessage(msgTypeID uint64, msg proto.Message) error {
+	return c.sendWithTypeID(msgTypeID, msg)
+}
+
+func (c *ESPHomeClient) sendWithApiConn(msg proto.Message) error {
+	c.logger.Debug("→ sending via apiConn", "type", proto.MessageName(msg))
+
+	c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+	if err := c.apiConn.Write(msg); err != nil {
+		c.logger.Error("apiConn write failed", "type", proto.MessageName(msg), "error", err)
 		return err
 	}
 
@@ -276,8 +417,15 @@ func (c *ESPHomeClient) StartVoiceAssistant() error {
 	c.logger.Debug("→ VoiceAssistantRequest (start)")
 
 	req := &api.VoiceAssistantRequest{
-		Start: true,
-		Flags: uint32(api.VoiceAssistantRequestFlag_VOICE_ASSISTANT_REQUEST_USE_WAKE_WORD),
+		Start:          true,
+		ConversationId: "",
+		Flags:          uint32(api.VoiceAssistantRequestFlag_VOICE_ASSISTANT_REQUEST_USE_WAKE_WORD),
+		AudioSettings: &api.VoiceAssistantAudioSettings{
+			NoiseSuppressionLevel: 0,
+			AutoGain:              0,
+			VolumeMultiplier:      0,
+		},
+		WakeWordPhrase: "",
 	}
 
 	if err := c.sendWithTypeID(msgVoiceAssistantRequest, req); err != nil {

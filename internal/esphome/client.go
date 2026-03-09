@@ -100,9 +100,8 @@ func (c *Client) Connect(ctx context.Context) error {
 		return err
 	}
 
-	if err := esphomeClient.Login(""); err != nil {
-		c.logger.Warn("Login failed (continuing anyway)", "error", err)
-	}
+	// Login is deprecated in ESPHome 2026.1.0+ (password authentication no longer supported)
+	// Skip login - ESPHome now uses noise encryption instead
 
 	if err := esphomeClient.SubscribeStates(); err != nil {
 		esphomeClient.Close()
@@ -137,6 +136,8 @@ func (c *Client) handleMessage(msg proto.Message) {
 	c.logger.Debug("received message", "type", proto.MessageName(msg))
 
 	switch m := msg.(type) {
+	case *api.VoiceAssistantRequest:
+		c.handleVoiceAssistantRequest(m)
 	case *api.VoiceAssistantEventResponse:
 		c.handleVoiceAssistantEvent(m)
 	case *api.VoiceAssistantAudio:
@@ -184,6 +185,32 @@ func (c *Client) handleVoiceAssistantAudio(audio *api.VoiceAssistantAudio) {
 	case c.audioChannel <- AudioEvent{Data: audio.Data, End: audio.End}:
 	default:
 		c.logger.Warn("audio channel full, dropping audio")
+	}
+}
+
+func (c *Client) handleVoiceAssistantRequest(req *api.VoiceAssistantRequest) {
+	if req.Start {
+		c.logger.Info("voice assistant start request received", "conversation_id", req.ConversationId)
+
+		response := &api.VoiceAssistantResponse{
+			Port:  0,
+			Error: false,
+		}
+
+		if err := c.esphomeClient.SendMessage(msgVoiceAssistantResponse, response); err != nil {
+			c.logger.Error("failed to send VoiceAssistantResponse", "error", err)
+			return
+		}
+
+		c.logger.Info("sent VoiceAssistantResponse", "port", response.Port)
+	} else {
+		c.logger.Info("voice assistant stopped")
+
+		select {
+		case c.eventChannel <- VoiceAssistantEvent{Phase: VoiceAssistantPhaseIdle}:
+		default:
+			c.logger.Warn("event channel full, dropping stop event")
+		}
 	}
 }
 
