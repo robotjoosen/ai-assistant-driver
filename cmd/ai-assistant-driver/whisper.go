@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
 	"github.com/robotjoosen/ai-assistant-driver/internal/whisper"
 )
 
@@ -46,7 +47,7 @@ func disconnectWhisper(ctx context.Context, transcriber whisper.StreamTranscribe
 	logger.Info("whisper disconnected")
 }
 
-func disconnectWhisperGraceful(ctx context.Context, transcriber whisper.StreamTranscriber, logger *slog.Logger) {
+func disconnectWhisperGraceful(ctx context.Context, transcriber whisper.StreamTranscriber, client *esphome.Client, logger *slog.Logger) {
 	logger.Info("sending audio-stop for final transcript")
 
 	if err := transcriber.SendAudioStop(); err != nil {
@@ -63,6 +64,10 @@ func disconnectWhisperGraceful(ctx context.Context, transcriber whisper.StreamTr
 	} else if transcript != nil {
 		if transcript.IsFinal {
 			logger.Info("final transcription", "text", transcript.Text, "start", transcript.Start, "end", transcript.End)
+
+			if err := client.SendSTTEvent(ctx, false); err != nil {
+				logger.Error("failed to send STT_END event to ESPHome", "error", err)
+			}
 		} else {
 			logger.Info("partial transcription", "text", transcript.Text, "start", transcript.Start, "end", transcript.End)
 		}

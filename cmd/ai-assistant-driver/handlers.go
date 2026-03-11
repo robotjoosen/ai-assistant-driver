@@ -13,6 +13,7 @@ func handleVoiceAssistantEvent(
 	event esphome.VoiceAssistantEvent,
 	state *appState,
 	transcriber whisper.StreamTranscriber,
+	client *esphome.Client,
 	logger *slog.Logger,
 ) bool {
 	logger.Info("voice assistant event", "phase", event.Phase.String(), "error", event.Error)
@@ -22,6 +23,8 @@ func handleVoiceAssistantEvent(
 		if state.streaming || state.whisperFailed {
 			return false
 		}
+
+		transcriber.ResetVAD()
 
 		if !connectWhisper(ctx, transcriber, logger) {
 			state.whisperRetries++
@@ -34,11 +37,24 @@ func handleVoiceAssistantEvent(
 
 		state.whisperRetries = 0
 		state.streaming = true
+		state.audioSent = false
+
+		if err := client.SendSTTEvent(ctx, true); err != nil {
+			logger.Error("failed to send STT_START event to ESPHome", "error", err)
+		}
 
 		return true
+	case esphome.VoiceAssistantPhaseThinking:
+		if state.streaming {
+			disconnectWhisperGraceful(ctx, transcriber, client, logger)
+			state.streaming = false
+			transcriber.Reset()
+		}
+
+		return false
 	case esphome.VoiceAssistantPhaseIdle, esphome.VoiceAssistantPhaseError:
 		if state.streaming {
-			disconnectWhisperGraceful(ctx, transcriber, logger)
+			disconnectWhisperGraceful(ctx, transcriber, client, logger)
 			state.streaming = false
 			transcriber.Reset()
 		}
@@ -54,6 +70,7 @@ func handleAudioEvent(
 	audio esphome.AudioEvent,
 	state *appState,
 	transcriber whisper.StreamTranscriber,
+	client *esphome.Client,
 	logger *slog.Logger,
 ) bool {
 	logger.Debug("received audio", "size", len(audio.Data), "end", audio.End)
@@ -81,6 +98,26 @@ func handleAudioEvent(
 			return true
 		}
 
+		return false
+	}
+
+	if !state.audioSent {
+		state.audioSent = true
+		if err := client.SendVADEvent(ctx, false); err != nil {
+			logger.Error("failed to send STT_VAD_START event to ESPHome", "error", err)
+		}
+	}
+
+	if transcriber.SilenceDetected() {
+		logger.Info("VAD detected end of speech, notifying ESPHome to stop listening")
+
+		if err := client.SendVADEvent(ctx, true); err != nil {
+			logger.Error("failed to send VAD event to ESPHome", "error", err)
+		}
+
+		disconnectWhisperGraceful(ctx, transcriber, client, logger)
+		state.streaming = false
+		transcriber.Reset()
 		return false
 	}
 

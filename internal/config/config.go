@@ -18,6 +18,7 @@ type Config struct {
 	LogLevel       string `env:"LOG_LEVEL"`
 	Whisper        WhisperConfig
 	Wyoming        WyomingConfig
+	VAD            VadConfig
 }
 
 type WhisperConfig struct {
@@ -29,6 +30,11 @@ type WyomingConfig struct {
 	Host     string `env:"WYOMING_HOST"`
 	Port     int    `env:"WYOMING_PORT"`
 	Language string `env:"WYOMING_LANGUAGE"`
+}
+
+type VadConfig struct {
+	ThresholdRatio float64 `env:"VAD_THRESHOLD_RATIO"`
+	MinSilenceMs   int     `env:"VAD_MIN_SILENCE_MS"`
 }
 
 func Load() (*Config, error) {
@@ -48,6 +54,10 @@ func Load() (*Config, error) {
 			Host:     "localhost",
 			Port:     10300,
 			Language: "en",
+		},
+		VAD: VadConfig{
+			ThresholdRatio: 2.5,
+			MinSilenceMs:   1000,
 		},
 	}
 

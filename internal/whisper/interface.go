@@ -20,4 +20,6 @@ type StreamTranscriber interface {
 	Close() error
 	Reset()
 	IsConnected() bool
+	SilenceDetected() bool
+	ResetVAD()
 }

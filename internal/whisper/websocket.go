@@ -133,3 +133,10 @@ func (t *WebSocketTranscriber) Reset() {
 	t.connected = false
 	t.conn = nil
 }
+
+func (t *WebSocketTranscriber) SilenceDetected() bool {
+	return false
+}
+
+func (t *WebSocketTranscriber) ResetVAD() {
+}

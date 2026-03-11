@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
+	"github.com/robotjoosen/ai-assistant-driver/internal/vad"
 	"github.com/robotjoosen/ai-assistant-driver/internal/whisper"
 )
 
@@ -16,6 +17,7 @@ type Transcriber struct {
 	host           string
 	port           int
 	language       string
+	vadDetector    *vad.Detector
 	mu             sync.Mutex
 	closed         bool
 	connected      bool
@@ -23,7 +25,7 @@ type Transcriber struct {
 	transcribeSent bool
 }
 
-func NewTranscriber(cfg config.WyomingConfig, logger *slog.Logger) (*Transcriber, error) {
+func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig, logger *slog.Logger) (*Transcriber, error) {
 	host := cfg.Host
 	if host == "" {
 		host = "localhost"
@@ -39,11 +41,17 @@ func NewTranscriber(cfg config.WyomingConfig, logger *slog.Logger) (*Transcriber
 		language = "en"
 	}
 
+	vadDetector := vad.NewDetector(
+		vad.WithThresholdRatio(vadCfg.ThresholdRatio),
+		vad.WithMinSilenceMs(vadCfg.MinSilenceMs),
+	)
+
 	return &Transcriber{
-		logger:   logger,
-		host:     host,
-		port:     port,
-		language: language,
+		logger:      logger,
+		host:        host,
+		port:        port,
+		language:    language,
+		vadDetector: vadDetector,
 	}, nil
 }
 
@@ -108,6 +116,13 @@ func (t *Transcriber) SendAudio(audioData []byte) error {
 	if err := t.client.WriteEvent(event, audioData); err != nil {
 		t.connected = false
 		return fmt.Errorf("failed to send audio-chunk: %w", err)
+	}
+
+	if t.vadDetector != nil {
+		_, silenceEnded := t.vadDetector.ProcessAudio(audioData)
+		if silenceEnded {
+			t.logger.Info("VAD detected end of speech")
+		}
 	}
 
 	t.logger.Debug("audio-chunk sent to Wyoming", "size", len(audioData))
@@ -213,10 +228,26 @@ func (t *Transcriber) Reset() {
 	t.audioSent = false
 	t.transcribeSent = false
 	t.client = nil
+	if t.vadDetector != nil {
+		t.vadDetector.Reset()
+	}
 }
 
 func (t *Transcriber) IsConnected() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.connected
+}
+
+func (t *Transcriber) SilenceDetected() bool {
+	if t.vadDetector == nil {
+		return false
+	}
+	return t.vadDetector.SpeechEnded()
+}
+
+func (t *Transcriber) ResetVAD() {
+	if t.vadDetector != nil {
+		t.vadDetector.Reset()
+	}
 }

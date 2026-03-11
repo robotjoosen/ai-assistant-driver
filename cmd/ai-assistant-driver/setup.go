@@ -49,7 +49,7 @@ func connectToESPHome(shutdownCtx context.Context, address string, logger *slog.
 
 func newWhisperTranscriber(cfg *config.Config, logger *slog.Logger) (whisper.StreamTranscriber, error) {
 	if cfg.Wyoming.Host != "" || cfg.Wyoming.Port != 0 {
-		transcriber, err := wyoming.NewTranscriber(cfg.Wyoming, logger)
+		transcriber, err := wyoming.NewTranscriber(cfg.Wyoming, cfg.VAD, logger)
 		if err != nil {
 			return nil, fmt.Errorf("failed to initialize Wyoming transcriber: %w", err)
 		}

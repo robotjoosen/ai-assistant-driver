@@ -15,6 +15,7 @@ type appState struct {
 	streaming      bool
 	whisperRetries int
 	whisperFailed  bool
+	audioSent      bool
 }
 
 func main() {
@@ -51,9 +52,9 @@ func main() {
 			case <-shutdownMgr.Context().Done():
 				return
 			case event := <-client.Events():
-				handleVoiceAssistantEvent(shutdownMgr.Context(), event, state, transcriber, logger)
+				handleVoiceAssistantEvent(shutdownMgr.Context(), event, state, transcriber, client, logger)
 			case audio := <-client.AudioEvents():
-				handleAudioEvent(shutdownMgr.Context(), audio, state, transcriber, logger)
+				handleAudioEvent(shutdownMgr.Context(), audio, state, transcriber, client, logger)
 			}
 		}
 	}()

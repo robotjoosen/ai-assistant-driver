@@ -174,6 +174,8 @@ func (c *Client) handleVoiceAssistantEvent(event *api.VoiceAssistantEventRespons
 		phase = VoiceAssistantPhaseListening
 	case api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_VAD_START:
 		phase = VoiceAssistantPhaseThinking
+	case api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_VAD_END:
+		phase = VoiceAssistantPhaseThinking
 	case api.VoiceAssistantEvent_VOICE_ASSISTANT_TTS_START:
 		phase = VoiceAssistantPhaseReply
 	case api.VoiceAssistantEvent_VOICE_ASSISTANT_RUN_END:
@@ -279,6 +281,60 @@ func (c *Client) SubscribeVoiceAssistant(ctx context.Context) error {
 
 func (c *Client) Events() <-chan VoiceAssistantEvent {
 	return c.eventChannel
+}
+
+func (c *Client) SendVADEvent(ctx context.Context, vadEnd bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.connected || c.esphomeClient == nil {
+		return ErrNotConnected
+	}
+
+	eventType := api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_VAD_END
+	if !vadEnd {
+		eventType = api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_VAD_START
+	}
+
+	event := &api.VoiceAssistantEventResponse{
+		EventType: eventType,
+	}
+
+	c.logger.Info("sending VAD event to ESPHome", "vad_end", vadEnd)
+
+	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
+		c.logger.Error("failed to send VAD event", "error", err)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) SendSTTEvent(ctx context.Context, start bool) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.connected || c.esphomeClient == nil {
+		return ErrNotConnected
+	}
+
+	eventType := api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_END
+	if start {
+		eventType = api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_START
+	}
+
+	event := &api.VoiceAssistantEventResponse{
+		EventType: eventType,
+	}
+
+	c.logger.Info("sending STT event to ESPHome", "start", start)
+
+	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
+		c.logger.Error("failed to send STT event", "error", err)
+		return err
+	}
+
+	return nil
 }
 
 func (c *Client) AudioEvents() <-chan AudioEvent {
