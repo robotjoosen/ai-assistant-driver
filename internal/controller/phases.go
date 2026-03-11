@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"log/slog"
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
 	"github.com/robotjoosen/ai-assistant-driver/internal/phases"
@@ -12,7 +13,7 @@ const (
 )
 
 func (c *Controller) handleVoiceAssistantEvent(event esphome.VoiceAssistantEvent) {
-	c.config.Logger.Info("voice assistant event", "phase", event.Phase.String(), "error", event.Error)
+	slog.Info("voice assistant event", "phase", event.Phase.String(), "error", event.Error)
 
 	switch event.Phase {
 	case esphome.VoiceAssistantPhaseListening:
@@ -23,7 +24,7 @@ func (c *Controller) handleVoiceAssistantEvent(event esphome.VoiceAssistantEvent
 }
 
 func (c *Controller) handleAudioEvent(audio esphome.AudioEvent) {
-	c.config.Logger.Debug("received audio", "size", len(audio.Data), "end", audio.End)
+	slog.Debug("received audio", "size", len(audio.Data), "end", audio.End)
 
 	if c.phase != PhaseListening {
 		return
@@ -36,7 +37,7 @@ func (c *Controller) handleAudioEvent(audio esphome.AudioEvent) {
 	transcriber := c.config.Transcriber
 
 	if err := transcriber.SendAudio(audio.Data); err != nil {
-		c.config.Logger.Error("failed to send audio to transcriber", "error", err)
+		slog.Error("failed to send audio to transcriber", "error", err)
 		c.sendError(ErrorEvent{
 			Phase:       PhaseListening,
 			Message:     err.Error(),
@@ -46,14 +47,14 @@ func (c *Controller) handleAudioEvent(audio esphome.AudioEvent) {
 	}
 
 	if transcriber.SilenceDetected() && c.phase == PhaseListening {
-		c.config.Logger.Info("VAD detected end of speech")
+		slog.Info("VAD detected end of speech")
 		c.commands <- esphome.Command{Type: esphome.CommandVADEnd}
 		c.handleListeningEnd()
 		return
 	}
 
 	if audio.End {
-		c.config.Logger.Info("audio stream ended")
+		slog.Info("audio stream ended")
 	}
 }
 
@@ -66,7 +67,7 @@ func (c *Controller) handleListeningStart() {
 	transcriber.ResetVAD()
 
 	if err := transcriber.Connect(context.Background()); err != nil {
-		c.config.Logger.Error("failed to connect to transcriber", "error", err)
+		slog.Error("failed to connect to transcriber", "error", err)
 		c.sendError(ErrorEvent{
 			Phase:       PhaseListening,
 			Message:     err.Error(),
@@ -76,7 +77,7 @@ func (c *Controller) handleListeningStart() {
 	}
 
 	c.phase = PhaseListening
-	c.config.Logger.Info("listening phase started")
+	slog.Info("listening phase started")
 
 	c.commands <- esphome.Command{Type: esphome.CommandSTTStart}
 }
@@ -89,12 +90,12 @@ func (c *Controller) handleListeningEnd() {
 	transcriber := c.config.Transcriber
 
 	if err := transcriber.SendAudioStop(); err != nil {
-		c.config.Logger.Error("failed to send audio-stop", "error", err)
+		slog.Error("failed to send audio-stop", "error", err)
 	}
 
 	transcript, err := transcriber.Recv()
 	if err != nil {
-		c.config.Logger.Error("error receiving transcript", "error", err)
+		slog.Error("error receiving transcript", "error", err)
 		transcriber.Close()
 		c.phase = PhaseIdle
 		c.sendError(ErrorEvent{
@@ -106,20 +107,20 @@ func (c *Controller) handleListeningEnd() {
 	}
 
 	if transcript != nil && transcript.Text != "" {
-		c.config.Logger.Info("transcription received", "text", transcript.Text, "final", transcript.IsFinal)
+		slog.Info("transcription received", "text", transcript.Text, "final", transcript.IsFinal)
 		c.transcript = transcript.Text
 	} else {
 		c.transcript = ""
 	}
 
 	if err := transcriber.Close(); err != nil {
-		c.config.Logger.Error("error closing transcriber", "error", err)
+		slog.Error("error closing transcriber", "error", err)
 	}
 
 	c.commands <- esphome.Command{Type: esphome.CommandSTTEnd}
 
 	if c.transcript == "" {
-		c.config.Logger.Info("no transcript received, staying idle")
+		slog.Info("no transcript received, staying idle")
 		c.phase = PhaseIdle
 		return
 	}
@@ -129,19 +130,19 @@ func (c *Controller) handleListeningEnd() {
 
 func (c *Controller) handleThinkingStart() {
 	if c.phase == PhaseThinking {
-		c.config.Logger.Info("thinking phase already started")
+		slog.Info("thinking phase already started")
 
 		return
 	}
 
 	c.phase = PhaseThinking
-	c.config.Logger.Info("thinking phase started", "transcript", c.transcript)
+	slog.Info("thinking phase started", "transcript", c.transcript)
 
-	thinkingPhase := phases.NewThinkingPhase(c.config.AIClient, c.config.Logger)
+	thinkingPhase := phases.NewThinkingPhase(c.config.AIClient)
 	response := thinkingPhase.Run(context.Background(), c.transcript)
 
 	if response == "" {
-		c.config.Logger.Error("no response from LLM")
+		slog.Error("no response from LLM")
 		c.sendError(ErrorEvent{
 			Phase:       PhaseThinking,
 			Message:     "no response from LLM",
@@ -152,7 +153,7 @@ func (c *Controller) handleThinkingStart() {
 	}
 
 	c.llmResponse = response
-	c.config.Logger.Info("LLM response received", "response_length", len(response))
+	slog.Info("LLM response received", "response_length", len(response))
 
 	c.handleReplyStart()
 }
@@ -163,11 +164,11 @@ func (c *Controller) handleReplyStart() {
 	}
 
 	c.phase = PhaseReply
-	c.config.Logger.Info("reply phase started")
+	slog.Info("reply phase started")
 
-	replyPhase := phases.NewReplyPhase(c.config.Logger)
+	replyPhase := phases.NewReplyPhase()
 	if err := replyPhase.Run(context.Background(), c.llmResponse); err != nil {
-		c.config.Logger.Error("reply phase failed", "error", err)
+		slog.Error("reply phase failed", "error", err)
 		c.sendError(ErrorEvent{
 			Phase:       PhaseReply,
 			Message:     err.Error(),
@@ -178,7 +179,7 @@ func (c *Controller) handleReplyStart() {
 	c.phase = PhaseIdle
 	c.transcript = ""
 	c.llmResponse = ""
-	c.config.Logger.Info("reply phase completed")
+	slog.Info("reply phase completed")
 }
 
 func (c *Controller) handleIdleOrError() {
@@ -186,7 +187,7 @@ func (c *Controller) handleIdleOrError() {
 		return
 	}
 
-	c.config.Logger.Info("transitioning to idle", "previous_phase", c.phase.String())
+	slog.Info("transitioning to idle", "previous_phase", c.phase.String())
 
 	if c.config.Transcriber.IsConnected() {
 		c.config.Transcriber.Close()
@@ -201,6 +202,6 @@ func (c *Controller) sendError(err ErrorEvent) {
 	select {
 	case c.errors <- err:
 	default:
-		c.config.Logger.Warn("error channel full, dropping error")
+		slog.Warn("error channel full, dropping error")
 	}
 }

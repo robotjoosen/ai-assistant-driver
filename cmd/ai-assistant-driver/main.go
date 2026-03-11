@@ -1,38 +1,44 @@
 package main
 
 import (
+	"log/slog"
+
 	"github.com/robotjoosen/ai-assistant-driver/internal/controller"
 	"github.com/robotjoosen/ai-assistant-driver/internal/shutdown"
 )
 
 func main() {
-	logger, cfg := loadConfiguration()
+	cfg, err := loadConfiguration()
+	if err != nil {
+		slog.Error("setup failed", "error", err)
+		return
+	}
 
-	logger.Info("starting AI Assistant Driver", "address", cfg.ESPHomeAddress)
+	slog.Info("starting AI Assistant Driver", "address", cfg.ESPHomeAddress)
 
 	shutdownMgr := shutdown.New()
 
-	esphomeClient, err := connectToESPHome(shutdownMgr.Context(), cfg.ESPHomeAddress, logger)
+	esphomeClient, err := connectToESPHome(shutdownMgr.Context(), cfg.ESPHomeAddress)
 	if err != nil {
-		logger.Error("setup failed", "error", err)
+		slog.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()
 		<-shutdownMgr.Done()
 		return
 	}
 	shutdownMgr.Add(func() { esphomeClient.Close() })
 
-	transcriberClient, err := newTranscriber(cfg, logger)
+	transcriberClient, err := newTranscriber(cfg)
 	if err != nil {
-		logger.Error("setup failed", "error", err)
+		slog.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()
 		<-shutdownMgr.Done()
 		return
 	}
 	shutdownMgr.Add(func() { transcriberClient.Close() })
 
-	aiClient, err := newAIClient(cfg, logger)
+	aiClient, err := newAIClient(cfg)
 	if err != nil {
-		logger.Error("setup failed", "error", err)
+		slog.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()
 		<-shutdownMgr.Done()
 		return
@@ -42,14 +48,13 @@ func main() {
 		controller.Config{
 			Transcriber: transcriberClient,
 			AIClient:    aiClient,
-			Logger:      logger,
 		},
 		esphomeClient.Events(),
 		esphomeClient.AudioEvents(),
 		esphomeClient.Commands(),
 	)
 
-	logger.Info("listening for voice assistant events and audio")
+	slog.Info("listening for voice assistant events and audio")
 
 	go ctrl.Run(shutdownMgr.Context())
 

@@ -60,7 +60,6 @@ type AudioEvent struct {
 type Client struct {
 	mu             sync.Mutex
 	address        string
-	logger         *slog.Logger
 	connected      bool
 	closed         bool
 	esphomeClient  *ESPHomeClient
@@ -70,10 +69,9 @@ type Client struct {
 	stopChannel    chan struct{}
 }
 
-func NewClient(address string, logger *slog.Logger) *Client {
+func NewClient(address string) *Client {
 	return &Client{
 		address:        address,
-		logger:         logger,
 		eventChannel:   make(chan VoiceAssistantEvent, 10),
 		audioChannel:   make(chan AudioEvent, 100),
 		commandChannel: make(chan Command, 10),
@@ -89,9 +87,9 @@ func (c *Client) Connect(ctx context.Context) error {
 		return nil
 	}
 
-	c.logger.Info("connecting to ESPHome device", "address", c.address)
+	slog.Info("connecting to ESPHome device", "address", c.address)
 
-	esphomeClient := NewESPHomeClient(c.address, c.logger)
+	esphomeClient := NewESPHomeClient(c.address)
 	esphomeClient.clientID = "ai-assistant-driver"
 
 	if err := esphomeClient.Connect(ctx); err != nil {
@@ -112,7 +110,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	}
 
 	c.esphomeClient = esphomeClient
-	c.logger.Info("connected to ESPHome device", "address", c.address)
+	slog.Info("connected to ESPHome device", "address", c.address)
 	c.connected = true
 
 	go c.handleMessages()
@@ -137,7 +135,7 @@ func (c *Client) handleMessage(msg proto.Message) {
 		return
 	}
 
-	c.logger.Debug("received message", "type", proto.MessageName(msg))
+	slog.Debug("received message", "type", proto.MessageName(msg))
 
 	switch m := msg.(type) {
 	case *api.VoiceAssistantRequest:
@@ -157,7 +155,7 @@ func (c *Client) handleMessage(msg proto.Message) {
 	case *api.MediaPlayerStateResponse:
 		c.handleMediaPlayerState(m)
 	default:
-		c.logger.Debug("unhandled message", "type", proto.MessageName(msg))
+		slog.Debug("unhandled message", "type", proto.MessageName(msg))
 	}
 }
 
@@ -185,48 +183,48 @@ func (c *Client) handleVoiceAssistantEvent(event *api.VoiceAssistantEventRespons
 		phase = VoiceAssistantPhaseIdle
 	}
 
-	c.logger.Info("voice assistant event", "phase", phase.String(), "error", errorMsg)
+	slog.Info("voice assistant event", "phase", phase.String(), "error", errorMsg)
 
 	select {
 	case c.eventChannel <- VoiceAssistantEvent{Phase: phase, Error: errorMsg}:
 	default:
-		c.logger.Warn("event channel full, dropping event")
+		slog.Warn("event channel full, dropping event")
 	}
 }
 
 func (c *Client) handleVoiceAssistantAudio(audio *api.VoiceAssistantAudio) {
-	c.logger.Debug("received audio", "size", len(audio.Data), "end", audio.End)
+	slog.Debug("received audio", "size", len(audio.Data), "end", audio.End)
 
 	select {
 	case c.audioChannel <- AudioEvent{Data: audio.Data, End: audio.End}:
 	default:
-		c.logger.Warn("audio channel full, dropping audio")
+		slog.Warn("audio channel full, dropping audio")
 	}
 }
 
 func (c *Client) handleBinarySensorState(state *api.BinarySensorStateResponse) {
-	c.logger.Info("binary sensor state", "key", state.Key, "state", state.State, "missing", state.MissingState)
+	slog.Info("binary sensor state", "key", state.Key, "state", state.State, "missing", state.MissingState)
 }
 
 func (c *Client) handleLightState(state *api.LightStateResponse) {
-	c.logger.Info("light state", "key", state.Key, "state", state.State, "brightness", state.Brightness, "effect", state.Effect)
+	slog.Info("light state", "key", state.Key, "state", state.State, "brightness", state.Brightness, "effect", state.Effect)
 }
 
 func (c *Client) handleSwitchState(state *api.SwitchStateResponse) {
-	c.logger.Info("switch state", "key", state.Key, "state", state.State)
+	slog.Info("switch state", "key", state.Key, "state", state.State)
 }
 
 func (c *Client) handleSelectState(state *api.SelectStateResponse) {
-	c.logger.Info("select state", "key", state.Key, "state", state.State, "missing", state.MissingState)
+	slog.Info("select state", "key", state.Key, "state", state.State, "missing", state.MissingState)
 }
 
 func (c *Client) handleMediaPlayerState(state *api.MediaPlayerStateResponse) {
-	c.logger.Info("media player state", "key", state.Key, "state", state.State, "volume", state.Volume, "muted", state.Muted)
+	slog.Info("media player state", "key", state.Key, "state", state.State, "volume", state.Volume, "muted", state.Muted)
 }
 
 func (c *Client) handleVoiceAssistantRequest(req *api.VoiceAssistantRequest) {
 	if req.Start {
-		c.logger.Info("voice assistant start request received", "conversation_id", req.ConversationId)
+		slog.Info("voice assistant start request received", "conversation_id", req.ConversationId)
 
 		response := &api.VoiceAssistantResponse{
 			Port:  0,
@@ -234,24 +232,24 @@ func (c *Client) handleVoiceAssistantRequest(req *api.VoiceAssistantRequest) {
 		}
 
 		if err := c.esphomeClient.SendMessage(msgVoiceAssistantResponse, response); err != nil {
-			c.logger.Error("failed to send VoiceAssistantResponse", "error", err)
+			slog.Error("failed to send VoiceAssistantResponse", "error", err)
 			return
 		}
 
-		c.logger.Info("sent VoiceAssistantResponse", "port", response.Port)
+		slog.Info("sent VoiceAssistantResponse", "port", response.Port)
 
 		select {
 		case c.eventChannel <- VoiceAssistantEvent{Phase: VoiceAssistantPhaseListening}:
 		default:
-			c.logger.Warn("event channel full, dropping start event")
+			slog.Warn("event channel full, dropping start event")
 		}
 	} else {
-		c.logger.Info("voice assistant stopped")
+		slog.Info("voice assistant stopped")
 
 		select {
 		case c.eventChannel <- VoiceAssistantEvent{Phase: VoiceAssistantPhaseIdle}:
 		default:
-			c.logger.Warn("event channel full, dropping stop event")
+			slog.Warn("event channel full, dropping stop event")
 		}
 	}
 }
@@ -264,21 +262,21 @@ func (c *Client) SubscribeVoiceAssistant(ctx context.Context) error {
 		return ErrNotConnected
 	}
 
-	c.logger.Info("subscribing to voice assistant")
+	slog.Info("subscribing to voice assistant")
 
 	if err := c.esphomeClient.SubscribeVoiceAssistant(); err != nil {
-		c.logger.Error("SubscribeVoiceAssistant failed", "error", err)
+		slog.Error("SubscribeVoiceAssistant failed", "error", err)
 		return err
 	}
 
-	c.logger.Info("subscribed to voice assistant, starting")
+	slog.Info("subscribed to voice assistant, starting")
 
 	if err := c.esphomeClient.StartVoiceAssistant(); err != nil {
-		c.logger.Error("StartVoiceAssistant failed", "error", err)
+		slog.Error("StartVoiceAssistant failed", "error", err)
 		return err
 	}
 
-	c.logger.Info("voice assistant started")
+	slog.Info("voice assistant started")
 	return nil
 }
 
@@ -339,10 +337,10 @@ func (c *Client) sendSTTEvent(start bool) {
 		EventType: eventType,
 	}
 
-	c.logger.Info("sending STT event to ESPHome", "start", start)
+	slog.Info("sending STT event to ESPHome", "start", start)
 
 	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
-		c.logger.Error("failed to send STT event", "error", err)
+		slog.Error("failed to send STT event", "error", err)
 	}
 }
 
@@ -356,10 +354,10 @@ func (c *Client) sendVADEvent(vadEnd bool) {
 		EventType: eventType,
 	}
 
-	c.logger.Info("sending VAD event to ESPHome", "vad_end", vadEnd)
+	slog.Info("sending VAD event to ESPHome", "vad_end", vadEnd)
 
 	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
-		c.logger.Error("failed to send VAD event", "error", err)
+		slog.Error("failed to send VAD event", "error", err)
 	}
 }
 
@@ -373,10 +371,10 @@ func (c *Client) sendTTSEvent(start bool) {
 		EventType: eventType,
 	}
 
-	c.logger.Info("sending TTS event to ESPHome", "start", start)
+	slog.Info("sending TTS event to ESPHome", "start", start)
 
 	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
-		c.logger.Error("failed to send TTS event", "error", err)
+		slog.Error("failed to send TTS event", "error", err)
 	}
 }
 
@@ -399,6 +397,6 @@ func (c *Client) Close() error {
 	close(c.audioChannel)
 
 	c.connected = false
-	c.logger.Info("disconnected from ESPHome device")
+	slog.Info("disconnected from ESPHome device")
 	return nil
 }

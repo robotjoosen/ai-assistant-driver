@@ -53,7 +53,6 @@ type pendingRequest struct {
 
 type ESPHomeClient struct {
 	mu       sync.Mutex
-	logger   *slog.Logger
 	address  string
 	clientID string
 	closed   bool
@@ -67,10 +66,9 @@ type ESPHomeClient struct {
 	pendingReqs map[uint64]*pendingRequest
 }
 
-func NewESPHomeClient(address string, logger *slog.Logger) *ESPHomeClient {
+func NewESPHomeClient(address string) *ESPHomeClient {
 	return &ESPHomeClient{
 		address:     address,
-		logger:      logger,
 		msgChan:     make(chan proto.Message, 10),
 		stopChan:    make(chan struct{}),
 		pendingReqs: make(map[uint64]*pendingRequest),
@@ -87,7 +85,7 @@ func (c *ESPHomeClient) Connect(ctx context.Context) error {
 
 	conn, err := net.DialTimeout("tcp", c.address, 10*time.Second)
 	if err != nil {
-		c.logger.Error("failed to dial ESPHome device", "error", err)
+		slog.Error("failed to dial ESPHome device", "error", err)
 		return err
 	}
 
@@ -95,7 +93,7 @@ func (c *ESPHomeClient) Connect(ctx context.Context) error {
 
 	apiConn, err := connection.GetConnection(conn, 10*time.Second, "")
 	if err != nil {
-		c.logger.Error("failed to create API connection", "error", err)
+		slog.Error("failed to create API connection", "error", err)
 		conn.Close()
 		return err
 	}
@@ -103,7 +101,7 @@ func (c *ESPHomeClient) Connect(ctx context.Context) error {
 	c.apiConn = apiConn
 
 	if err := apiConn.Handshake(); err != nil {
-		c.logger.Error("handshake failed", "error", err)
+		slog.Error("handshake failed", "error", err)
 		conn.Close()
 		return err
 	}
@@ -125,10 +123,10 @@ func (c *ESPHomeClient) readLoop(reader *bufio.Reader) {
 			msg, err := c.readRawMessage(reader)
 			if err != nil {
 				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-					c.logger.Info("connection closed")
+					slog.Info("connection closed")
 					return
 				}
-				c.logger.Error("read error", "error", err)
+				slog.Error("read error", "error", err)
 				return
 			}
 			c.routeMessage(msg)
@@ -157,16 +155,16 @@ func (c *ESPHomeClient) readRawMessage(reader *bufio.Reader) (proto.Message, err
 		return nil, err
 	}
 
-	c.logger.Debug("received raw message", "preamble", preamble, "typeID", typeID, "length", length)
+	slog.Debug("received raw message", "preamble", preamble, "typeID", typeID, "length", length)
 
 	msg := getMessageForTypeID(typeID)
 	if msg == nil {
-		c.logger.Warn("unknown message type", "typeID", typeID)
+		slog.Warn("unknown message type", "typeID", typeID)
 		return nil, nil
 	}
 
 	if err := proto.Unmarshal(data, msg); err != nil {
-		c.logger.Error("failed to unmarshal message", "typeID", typeID, "error", err)
+		slog.Error("failed to unmarshal message", "typeID", typeID, "error", err)
 		return nil, err
 	}
 
@@ -254,7 +252,7 @@ func (c *ESPHomeClient) routeMessage(msg proto.Message) {
 	}
 
 	msgTypeID := api.TypeID(msg)
-	c.logger.Debug("received message", "type", proto.MessageName(msg), "typeID", msgTypeID)
+	slog.Debug("received message", "type", proto.MessageName(msg), "typeID", msgTypeID)
 
 	if _, ok := msg.(*api.PingRequest); ok {
 		c.sendWithTypeID(msgPingResponse, &api.PingResponse{})
@@ -269,7 +267,7 @@ func (c *ESPHomeClient) routeMessage(msg proto.Message) {
 		select {
 		case req.responseChan <- msg:
 		default:
-			c.logger.Warn("response channel full, dropping")
+			slog.Warn("response channel full, dropping")
 		}
 		return
 	}
@@ -278,57 +276,57 @@ func (c *ESPHomeClient) routeMessage(msg proto.Message) {
 	case c.msgChan <- msg:
 	case <-c.stopChan:
 	default:
-		c.logger.Warn("message channel full, dropping")
+		slog.Warn("message channel full, dropping")
 	}
 }
 
 func (c *ESPHomeClient) SubscribeStates() error {
-	c.logger.Debug("→ SubscribeStates")
+	slog.Debug("→ SubscribeStates")
 
 	if err := c.apiConn.Write(&api.SubscribeStatesRequest{}); err != nil {
-		c.logger.Error("SubscribeStates failed", "error", err)
+		slog.Error("SubscribeStates failed", "error", err)
 		return err
 	}
 
-	c.logger.Debug("SubscribeStates sent")
+	slog.Debug("SubscribeStates sent")
 	return nil
 }
 
 func (c *ESPHomeClient) Hello() error {
-	c.logger.Debug("→ Hello")
+	slog.Debug("→ Hello")
 
 	_, err := c.sendAndWaitForResponse(&api.HelloRequest{
 		ClientInfo: c.clientID,
 	}, msgHelloResponse)
 	if err != nil {
-		c.logger.Error("Hello failed", "error", err)
+		slog.Error("Hello failed", "error", err)
 		return err
 	}
 
-	c.logger.Info("Hello successful")
+	slog.Info("Hello successful")
 	return nil
 }
 
 func (c *ESPHomeClient) Login(password string) error {
-	c.logger.Debug("→ Connect (login)")
+	slog.Debug("→ Connect (login)")
 
 	_, err := c.sendAndWaitForResponse(&api.ConnectRequest{
 		Password: password,
 	}, msgConnectResponse)
 	if err != nil {
-		c.logger.Warn("Login failed (continuing anyway)", "error", err)
+		slog.Warn("Login failed (continuing anyway)", "error", err)
 		return err
 	}
 
-	c.logger.Info("Login successful")
+	slog.Info("Login successful")
 	return nil
 }
 
 func (c *ESPHomeClient) sendAndWaitForResponse(msg proto.Message, responseTypeID uint64) (proto.Message, error) {
-	c.logger.Debug("→ sending message (waiting)", "type", proto.MessageName(msg), "responseTypeID", responseTypeID)
+	slog.Debug("→ sending message (waiting)", "type", proto.MessageName(msg), "responseTypeID", responseTypeID)
 
 	if err := c.apiConn.Write(msg); err != nil {
-		c.logger.Error("write failed", "type", proto.MessageName(msg), "error", err)
+		slog.Error("write failed", "type", proto.MessageName(msg), "error", err)
 		return nil, err
 	}
 
@@ -351,7 +349,7 @@ func (c *ESPHomeClient) sendAndWaitForResponse(msg proto.Message, responseTypeID
 		c.pendingMu.Lock()
 		delete(c.pendingReqs, responseTypeID)
 		c.pendingMu.Unlock()
-		c.logger.Error("timeout waiting for response", "type", proto.MessageName(msg), "responseTypeID", responseTypeID)
+		slog.Error("timeout waiting for response", "type", proto.MessageName(msg), "responseTypeID", responseTypeID)
 		return nil, context.DeadlineExceeded
 	}
 }
@@ -359,7 +357,7 @@ func (c *ESPHomeClient) sendAndWaitForResponse(msg proto.Message, responseTypeID
 func (c *ESPHomeClient) sendWithTypeID(msgTypeID uint64, msg proto.Message) error {
 	data, err := proto.Marshal(msg)
 	if err != nil {
-		c.logger.Error("failed to marshal message", "type", proto.MessageName(msg), "error", err)
+		slog.Error("failed to marshal message", "type", proto.MessageName(msg), "error", err)
 		return err
 	}
 
@@ -376,11 +374,11 @@ func (c *ESPHomeClient) sendWithTypeID(msgTypeID uint64, msg proto.Message) erro
 	buf.Write(data)
 
 	frame := buf.Bytes()
-	c.logger.Debug("→ sending raw message", "typeID", msgTypeID, "type", proto.MessageName(msg), "size", len(data), "frame", formatHex(frame))
+	slog.Debug("→ sending raw message", "typeID", msgTypeID, "type", proto.MessageName(msg), "size", len(data), "frame", formatHex(frame))
 
 	c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	if _, err := c.conn.Write(frame); err != nil {
-		c.logger.Error("send failed", "type", proto.MessageName(msg), "error", err)
+		slog.Error("send failed", "type", proto.MessageName(msg), "error", err)
 		return err
 	}
 
@@ -392,11 +390,11 @@ func (c *ESPHomeClient) SendMessage(msgTypeID uint64, msg proto.Message) error {
 }
 
 func (c *ESPHomeClient) sendWithApiConn(msg proto.Message) error {
-	c.logger.Debug("→ sending via apiConn", "type", proto.MessageName(msg))
+	slog.Debug("→ sending via apiConn", "type", proto.MessageName(msg))
 
 	c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 	if err := c.apiConn.Write(msg); err != nil {
-		c.logger.Error("apiConn write failed", "type", proto.MessageName(msg), "error", err)
+		slog.Error("apiConn write failed", "type", proto.MessageName(msg), "error", err)
 		return err
 	}
 
@@ -414,7 +412,7 @@ func formatHex(data []byte) string {
 }
 
 func (c *ESPHomeClient) SubscribeVoiceAssistant() error {
-	c.logger.Debug("→ SubscribeVoiceAssistant")
+	slog.Debug("→ SubscribeVoiceAssistant")
 
 	req := &api.SubscribeVoiceAssistantRequest{
 		Subscribe: true,
@@ -422,16 +420,16 @@ func (c *ESPHomeClient) SubscribeVoiceAssistant() error {
 	}
 
 	if err := c.sendWithTypeID(msgSubscribeVoiceAssistant, req); err != nil {
-		c.logger.Error("SubscribeVoiceAssistant failed", "error", err)
+		slog.Error("SubscribeVoiceAssistant failed", "error", err)
 		return err
 	}
 
-	c.logger.Info("subscribed to voice assistant")
+	slog.Info("subscribed to voice assistant")
 	return nil
 }
 
 func (c *ESPHomeClient) StartVoiceAssistant() error {
-	c.logger.Debug("→ VoiceAssistantRequest (start)")
+	slog.Debug("→ VoiceAssistantRequest (start)")
 
 	req := &api.VoiceAssistantRequest{
 		Start:          true,
@@ -446,11 +444,11 @@ func (c *ESPHomeClient) StartVoiceAssistant() error {
 	}
 
 	if err := c.sendWithTypeID(msgVoiceAssistantRequest, req); err != nil {
-		c.logger.Error("StartVoiceAssistant failed", "error", err)
+		slog.Error("StartVoiceAssistant failed", "error", err)
 		return err
 	}
 
-	c.logger.Info("voice assistant started")
+	slog.Info("voice assistant started")
 	return nil
 }
 

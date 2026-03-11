@@ -2,13 +2,11 @@ package phases
 
 import (
 	"context"
-
-	"log/slog"
 )
 
 type ReplyPhase struct{}
 
-func NewReplyPhase(_ *slog.Logger) *ReplyPhase {
+func NewReplyPhase() *ReplyPhase {
 	return &ReplyPhase{}
 }
 

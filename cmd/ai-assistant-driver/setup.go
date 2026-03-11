@@ -13,7 +13,7 @@ import (
 	"github.com/robotjoosen/ai-assistant-driver/internal/transcriber"
 )
 
-func loadConfiguration() (*slog.Logger, *config.Config) {
+func loadConfiguration() (*config.Config, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("failed to load configuration", "error", err)
@@ -26,13 +26,13 @@ func loadConfiguration() (*slog.Logger, *config.Config) {
 
 	slog.SetDefault(logger)
 
-	return logger, cfg
+	return cfg, nil
 }
 
-func connectToESPHome(shutdownCtx context.Context, address string, logger *slog.Logger) (*esphome.Client, error) {
-	logger.Info("connecting to ESPHome device", "address", address)
+func connectToESPHome(shutdownCtx context.Context, address string) (*esphome.Client, error) {
+	slog.Info("connecting to ESPHome device", "address", address)
 
-	client := esphome.NewClient(address, logger)
+	client := esphome.NewClient(address)
 
 	if err := client.Connect(shutdownCtx); err != nil {
 		return nil, fmt.Errorf("failed to connect to ESPHome device: %w", err)
@@ -43,17 +43,17 @@ func connectToESPHome(shutdownCtx context.Context, address string, logger *slog.
 		return nil, fmt.Errorf("failed to subscribe to voice assistant: %w", err)
 	}
 
-	logger.Info("connected to ESPHome device", "address", address)
+	slog.Info("connected to ESPHome device", "address", address)
 
 	return client, nil
 }
 
-func newTranscriber(cfg *config.Config, logger *slog.Logger) (transcriber.Transcriber, error) {
+func newTranscriber(cfg *config.Config) (transcriber.Transcriber, error) {
 	if cfg.Wyoming.Host == "" && cfg.Wyoming.Port == 0 {
 		return nil, fmt.Errorf("Wyoming configuration is required. Please set WYOMING_HOST and WYOMING_PORT")
 	}
 
-	transcriberClient, err := transcriber.NewTranscriber(cfg.Wyoming, cfg.VAD, logger)
+	transcriberClient, err := transcriber.NewTranscriber(cfg.Wyoming, cfg.VAD)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Wyoming transcriber: %w", err)
 	}
@@ -61,7 +61,7 @@ func newTranscriber(cfg *config.Config, logger *slog.Logger) (transcriber.Transc
 	return transcriberClient, nil
 }
 
-func newAIClient(cfg *config.Config, logger *slog.Logger) (ai.Client, error) {
+func newAIClient(cfg *config.Config) (ai.Client, error) {
 	ollamaConfig := ollama.Config{
 		Host:          cfg.AI.Host,
 		Port:          cfg.AI.Port,
@@ -70,7 +70,7 @@ func newAIClient(cfg *config.Config, logger *slog.Logger) (ai.Client, error) {
 	}
 
 	client := ollama.NewClient(ollamaConfig)
-	logger.Info("AI client initialized", "host", cfg.AI.Host, "port", cfg.AI.Port, "model", cfg.AI.Model)
+	slog.Info("AI client initialized", "host", cfg.AI.Host, "port", cfg.AI.Port, "model", cfg.AI.Model)
 
 	return client, nil
 }

@@ -19,7 +19,6 @@ const (
 )
 
 type WyomingTranscriber struct {
-	logger         *slog.Logger
 	client         *wyoming.Client
 	host           string
 	port           int
@@ -32,7 +31,7 @@ type WyomingTranscriber struct {
 	transcribeSent bool
 }
 
-func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig, logger *slog.Logger) (Transcriber, error) {
+func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig) (Transcriber, error) {
 	host := cfg.Host
 	if host == "" {
 		host = "localhost"
@@ -54,7 +53,6 @@ func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig, logger *s
 	)
 
 	return &WyomingTranscriber{
-		logger:      logger,
 		host:        host,
 		port:        port,
 		language:    language,
@@ -85,7 +83,7 @@ func (t *WyomingTranscriber) Connect(ctx context.Context) error {
 	t.audioSent = false
 	t.transcribeSent = false
 
-	t.logger.Info("connected to Wyoming service", "host", t.host, "port", t.port)
+	slog.Info("connected to Wyoming service", "host", t.host, "port", t.port)
 
 	return nil
 }
@@ -99,26 +97,26 @@ func (t *WyomingTranscriber) SendAudio(audioData []byte) error {
 	}
 
 	if !t.transcribeSent {
-		t.logger.Debug("sending transcribe event to Wyoming", "language", t.language)
+		slog.Debug("sending transcribe event to Wyoming", "language", t.language)
 		event := wyoming.NewTranscribeEvent(t.language)
 		if err := t.client.WriteEvent(event, nil); err != nil {
 			return fmt.Errorf("failed to send transcribe: %w", err)
 		}
 		t.transcribeSent = true
-		t.logger.Debug("transcribe event sent to Wyoming")
+		slog.Debug("transcribe event sent to Wyoming")
 	}
 
 	if !t.audioSent {
-		t.logger.Debug("sending audio-start to Wyoming", "rate", AudioSampleRate, "width", AudioBitDepth, "channels", AudioChannels)
+		slog.Debug("sending audio-start to Wyoming", "rate", AudioSampleRate, "width", AudioBitDepth, "channels", AudioChannels)
 		event := wyoming.NewAudioStartEvent(AudioSampleRate, AudioBitDepth, AudioChannels)
 		if err := t.client.WriteEvent(event, nil); err != nil {
 			return fmt.Errorf("failed to send audio-start: %w", err)
 		}
 		t.audioSent = true
-		t.logger.Debug("audio-start sent to Wyoming")
+		slog.Debug("audio-start sent to Wyoming")
 	}
 
-	t.logger.Debug("sending audio-chunk to Wyoming", "size", len(audioData))
+	slog.Debug("sending audio-chunk to Wyoming", "size", len(audioData))
 	event := wyoming.NewAudioChunkEvent(AudioSampleRate, AudioBitDepth, AudioChannels, 0, len(audioData))
 	if err := t.client.WriteEvent(event, audioData); err != nil {
 		t.connected = false
@@ -128,11 +126,11 @@ func (t *WyomingTranscriber) SendAudio(audioData []byte) error {
 	if t.vadDetector != nil {
 		_, silenceEnded := t.vadDetector.ProcessAudio(audioData)
 		if silenceEnded {
-			t.logger.Info("VAD detected end of speech")
+			slog.Info("VAD detected end of speech")
 		}
 	}
 
-	t.logger.Debug("audio-chunk sent to Wyoming", "size", len(audioData))
+	slog.Debug("audio-chunk sent to Wyoming", "size", len(audioData))
 
 	return nil
 }
@@ -142,7 +140,7 @@ func (t *WyomingTranscriber) Recv() (*Transcript, error) {
 		return nil, fmt.Errorf("not connected to Wyoming service")
 	}
 
-	t.logger.Debug("waiting for transcript from Wyoming...")
+	slog.Debug("waiting for transcript from Wyoming...")
 
 	event, payload, err := t.client.ReadEvent()
 	if err != nil {
@@ -150,7 +148,7 @@ func (t *WyomingTranscriber) Recv() (*Transcript, error) {
 		return nil, fmt.Errorf("failed to read event: %w", err)
 	}
 
-	t.logger.Debug("received event from Wyoming", "type", event.Type)
+	slog.Debug("received event from Wyoming", "type", event.Type)
 
 	switch event.Type {
 	case wyoming.EventTranscript:
@@ -169,7 +167,7 @@ func (t *WyomingTranscriber) Recv() (*Transcript, error) {
 		}, nil
 
 	default:
-		t.logger.Debug("received unhandled event", "type", event.Type)
+		slog.Debug("received unhandled event", "type", event.Type)
 		return nil, nil
 	}
 }
@@ -185,17 +183,17 @@ func (t *WyomingTranscriber) Close() error {
 	t.closed = true
 
 	if t.client != nil && t.audioSent {
-		t.logger.Debug("sending audio-stop event")
+		slog.Debug("sending audio-stop event")
 		event := wyoming.NewAudioStopEvent(0)
 		if err := t.client.WriteEvent(event, nil); err != nil {
-			t.logger.Warn("failed to send audio-stop", "error", err)
+			slog.Warn("failed to send audio-stop", "error", err)
 		} else {
-			t.logger.Debug("audio-stop sent successfully")
+			slog.Debug("audio-stop sent successfully")
 		}
 	}
 
 	if t.client != nil {
-		t.logger.Info("closing connection to Wyoming service")
+		slog.Info("closing connection to Wyoming service")
 		err := t.client.Close()
 		t.client = nil
 		return err
@@ -216,13 +214,13 @@ func (t *WyomingTranscriber) SendAudioStop() error {
 		return nil
 	}
 
-	t.logger.Debug("sending audio-stop event (standalone)")
+	slog.Debug("sending audio-stop event (standalone)")
 	event := wyoming.NewAudioStopEvent(0)
 	if err := t.client.WriteEvent(event, nil); err != nil {
 		return fmt.Errorf("failed to send audio-stop: %w", err)
 	}
 
-	t.logger.Debug("audio-stop sent successfully")
+	slog.Debug("audio-stop sent successfully")
 	return nil
 }
 

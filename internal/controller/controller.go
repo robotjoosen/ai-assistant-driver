@@ -42,7 +42,6 @@ type ErrorEvent struct {
 type Config struct {
 	Transcriber transcriber.Transcriber
 	AIClient    ai.Client
-	Logger      *slog.Logger
 }
 
 type Controller struct {
@@ -78,12 +77,12 @@ func (c *Controller) Errors() <-chan ErrorEvent {
 }
 
 func (c *Controller) Run(ctx context.Context) {
-	c.config.Logger.Info("phase controller started")
+	slog.Info("phase controller started")
 
 	for {
 		select {
 		case <-ctx.Done():
-			c.config.Logger.Info("phase controller stopped")
+			slog.Info("phase controller stopped")
 			return
 		case event := <-c.voiceAssistantEvents:
 			c.handleVoiceAssistantEvent(event)
