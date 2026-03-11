@@ -11,6 +11,7 @@ import (
 
 var (
 	ErrESPHomeAddressRequired = errors.New("ESP_HOME_ADDRESS is required")
+	ErrAIModelRequired        = errors.New("AI_MODEL is required")
 )
 
 type Config struct {
@@ -18,6 +19,7 @@ type Config struct {
 	LogLevel       string `env:"LOG_LEVEL"`
 	Wyoming        WyomingConfig
 	VAD            VadConfig
+	AI             AIConfig
 }
 
 type WyomingConfig struct {
@@ -29,6 +31,13 @@ type WyomingConfig struct {
 type VadConfig struct {
 	ThresholdRatio float64 `env:"VAD_THRESHOLD_RATIO"`
 	MinSilenceMs   int     `env:"VAD_MIN_SILENCE_MS"`
+}
+
+type AIConfig struct {
+	Host          string `env:"AI_HOST"`
+	Port          int    `env:"AI_PORT"`
+	Model         string `env:"AI_MODEL"`
+	SystemMessage string `env:"AI_SYSTEM_MESSAGE"`
 }
 
 func Load() (*Config, error) {
@@ -49,6 +58,10 @@ func Load() (*Config, error) {
 			ThresholdRatio: 2.5,
 			MinSilenceMs:   1000,
 		},
+		AI: AIConfig{
+			Host: "localhost",
+			Port: 11434,
+		},
 	}
 
 	if err := env.Parse(cfg); err != nil {
@@ -57,6 +70,10 @@ func Load() (*Config, error) {
 
 	if cfg.ESPHomeAddress == "" {
 		return nil, ErrESPHomeAddressRequired
+	}
+
+	if cfg.AI.Model == "" {
+		return nil, ErrAIModelRequired
 	}
 
 	return cfg, nil

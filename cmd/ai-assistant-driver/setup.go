@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"os"
 
+	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
+	"github.com/robotjoosen/ai-assistant-driver/internal/ai/ollama"
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
-	"github.com/robotjoosen/ai-assistant-driver/internal/wyoming"
+	"github.com/robotjoosen/ai-assistant-driver/internal/transcriber"
 )
 
 func loadConfiguration() (*slog.Logger, *config.Config) {
@@ -46,15 +48,29 @@ func connectToESPHome(shutdownCtx context.Context, address string, logger *slog.
 	return client, nil
 }
 
-func newTranscriber(cfg *config.Config, logger *slog.Logger) (wyoming.StreamTranscriber, error) {
+func newTranscriber(cfg *config.Config, logger *slog.Logger) (transcriber.Transcriber, error) {
 	if cfg.Wyoming.Host == "" && cfg.Wyoming.Port == 0 {
 		return nil, fmt.Errorf("Wyoming configuration is required. Please set WYOMING_HOST and WYOMING_PORT")
 	}
 
-	transcriber, err := wyoming.NewTranscriber(cfg.Wyoming, cfg.VAD, logger)
+	transcriberClient, err := transcriber.NewTranscriber(cfg.Wyoming, cfg.VAD, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize Wyoming transcriber: %w", err)
 	}
 
-	return transcriber, nil
+	return transcriberClient, nil
+}
+
+func newAIClient(cfg *config.Config, logger *slog.Logger) (ai.Client, error) {
+	ollamaConfig := ollama.Config{
+		Host:          cfg.AI.Host,
+		Port:          cfg.AI.Port,
+		Model:         cfg.AI.Model,
+		SystemMessage: cfg.AI.SystemMessage,
+	}
+
+	client := ollama.NewClient(ollamaConfig)
+	logger.Info("AI client initialized", "host", cfg.AI.Host, "port", cfg.AI.Port, "model", cfg.AI.Model)
+
+	return client, nil
 }

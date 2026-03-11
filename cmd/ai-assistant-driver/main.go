@@ -1,22 +1,9 @@
 package main
 
 import (
-	"time"
-
+	"github.com/robotjoosen/ai-assistant-driver/internal/controller"
 	"github.com/robotjoosen/ai-assistant-driver/internal/shutdown"
 )
-
-const (
-	maxWhisperRetries = 3
-	retryDelay        = 1 * time.Second
-)
-
-type appState struct {
-	streaming          bool
-	transcriberRetries int
-	transcriberFailed  bool
-	audioSent          bool
-}
 
 func main() {
 	logger, cfg := loadConfiguration()
@@ -25,39 +12,46 @@ func main() {
 
 	shutdownMgr := shutdown.New()
 
-	client, err := connectToESPHome(shutdownMgr.Context(), cfg.ESPHomeAddress, logger)
+	esphomeClient, err := connectToESPHome(shutdownMgr.Context(), cfg.ESPHomeAddress, logger)
 	if err != nil {
 		logger.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()
 		<-shutdownMgr.Done()
 		return
 	}
-	shutdownMgr.Add(func() { client.Close() })
+	shutdownMgr.Add(func() { esphomeClient.Close() })
 
-	transcriber, err := newTranscriber(cfg, logger)
+	transcriberClient, err := newTranscriber(cfg, logger)
 	if err != nil {
 		logger.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()
 		<-shutdownMgr.Done()
 		return
 	}
-	shutdownMgr.Add(func() { transcriber.Close() })
+	shutdownMgr.Add(func() { transcriberClient.Close() })
+
+	aiClient, err := newAIClient(cfg, logger)
+	if err != nil {
+		logger.Error("setup failed", "error", err)
+		shutdownMgr.Cancel()
+		<-shutdownMgr.Done()
+		return
+	}
+
+	ctrl := controller.New(
+		controller.Config{
+			Transcriber: transcriberClient,
+			AIClient:    aiClient,
+			Logger:      logger,
+		},
+		esphomeClient.Events(),
+		esphomeClient.AudioEvents(),
+		esphomeClient.Commands(),
+	)
 
 	logger.Info("listening for voice assistant events and audio")
 
-	go func() {
-		state := &appState{}
-		for {
-			select {
-			case <-shutdownMgr.Context().Done():
-				return
-			case event := <-client.Events():
-				handleVoiceAssistantEvent(shutdownMgr.Context(), event, state, transcriber, client, logger)
-			case audio := <-client.AudioEvents():
-				handleAudioEvent(shutdownMgr.Context(), audio, state, transcriber, client, logger)
-			}
-		}
-	}()
+	go ctrl.Run(shutdownMgr.Context())
 
 	<-shutdownMgr.Done()
 }

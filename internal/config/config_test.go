@@ -9,8 +9,10 @@ import (
 func TestLoad_Success(t *testing.T) {
 	os.Setenv("ESP_HOME_ADDRESS", "192.168.1.100:6053")
 	os.Setenv("LOG_LEVEL", "debug")
+	os.Setenv("AI_MODEL", "llama3.2")
 	defer os.Unsetenv("ESP_HOME_ADDRESS")
 	defer os.Unsetenv("LOG_LEVEL")
+	defer os.Unsetenv("AI_MODEL")
 
 	cfg, err := Load()
 	if err != nil {
@@ -24,11 +26,17 @@ func TestLoad_Success(t *testing.T) {
 	if cfg.LogLevel != "debug" {
 		t.Errorf("expected log level debug, got %s", cfg.LogLevel)
 	}
+
+	if cfg.AI.Model != "llama3.2" {
+		t.Errorf("expected AI model llama3.2, got %s", cfg.AI.Model)
+	}
 }
 
 func TestLoad_DefaultLogLevel(t *testing.T) {
 	os.Setenv("ESP_HOME_ADDRESS", "192.168.1.100:6053")
+	os.Setenv("AI_MODEL", "llama3.2")
 	defer os.Unsetenv("ESP_HOME_ADDRESS")
+	defer os.Unsetenv("AI_MODEL")
 	os.Unsetenv("LOG_LEVEL")
 
 	cfg, err := Load()

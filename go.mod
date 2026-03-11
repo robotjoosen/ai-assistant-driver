@@ -4,7 +4,6 @@ go 1.23.0
 
 require (
 	github.com/caarlos0/env/v11 v11.4.0
-	github.com/gorilla/websocket v1.5.0
 	github.com/joho/godotenv v1.5.1
 	github.com/mycontroller-org/esphome_api v1.3.1-0.20240909024903-04faae490c02
 	google.golang.org/protobuf v1.34.2

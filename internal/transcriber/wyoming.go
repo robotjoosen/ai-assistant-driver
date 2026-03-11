@@ -1,4 +1,4 @@
-package wyoming
+package transcriber
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
 	"github.com/robotjoosen/ai-assistant-driver/internal/vad"
+	"github.com/robotjoosen/ai-assistant-driver/internal/wyoming"
 )
 
 const (
@@ -17,9 +18,9 @@ const (
 	AudioChannels      = 1
 )
 
-type Transcriber struct {
+type WyomingTranscriber struct {
 	logger         *slog.Logger
-	client         *Client
+	client         *wyoming.Client
 	host           string
 	port           int
 	language       string
@@ -31,7 +32,7 @@ type Transcriber struct {
 	transcribeSent bool
 }
 
-func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig, logger *slog.Logger) (*Transcriber, error) {
+func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig, logger *slog.Logger) (Transcriber, error) {
 	host := cfg.Host
 	if host == "" {
 		host = "localhost"
@@ -52,7 +53,7 @@ func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig, logger *s
 		vad.WithMinSilenceMs(vadCfg.MinSilenceMs),
 	)
 
-	return &Transcriber{
+	return &WyomingTranscriber{
 		logger:      logger,
 		host:        host,
 		port:        port,
@@ -61,7 +62,7 @@ func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig, logger *s
 	}, nil
 }
 
-func (t *Transcriber) Connect(ctx context.Context) error {
+func (t *WyomingTranscriber) Connect(ctx context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -74,7 +75,7 @@ func (t *Transcriber) Connect(ctx context.Context) error {
 		t.client = nil
 	}
 
-	client, err := NewClient(t.host, t.port)
+	client, err := wyoming.NewClient(t.host, t.port)
 	if err != nil {
 		return err
 	}
@@ -89,7 +90,7 @@ func (t *Transcriber) Connect(ctx context.Context) error {
 	return nil
 }
 
-func (t *Transcriber) SendAudio(audioData []byte) error {
+func (t *WyomingTranscriber) SendAudio(audioData []byte) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -99,7 +100,7 @@ func (t *Transcriber) SendAudio(audioData []byte) error {
 
 	if !t.transcribeSent {
 		t.logger.Debug("sending transcribe event to Wyoming", "language", t.language)
-		event := NewTranscribeEvent(t.language)
+		event := wyoming.NewTranscribeEvent(t.language)
 		if err := t.client.WriteEvent(event, nil); err != nil {
 			return fmt.Errorf("failed to send transcribe: %w", err)
 		}
@@ -109,7 +110,7 @@ func (t *Transcriber) SendAudio(audioData []byte) error {
 
 	if !t.audioSent {
 		t.logger.Debug("sending audio-start to Wyoming", "rate", AudioSampleRate, "width", AudioBitDepth, "channels", AudioChannels)
-		event := NewAudioStartEvent(AudioSampleRate, AudioBitDepth, AudioChannels)
+		event := wyoming.NewAudioStartEvent(AudioSampleRate, AudioBitDepth, AudioChannels)
 		if err := t.client.WriteEvent(event, nil); err != nil {
 			return fmt.Errorf("failed to send audio-start: %w", err)
 		}
@@ -118,7 +119,7 @@ func (t *Transcriber) SendAudio(audioData []byte) error {
 	}
 
 	t.logger.Debug("sending audio-chunk to Wyoming", "size", len(audioData))
-	event := NewAudioChunkEvent(AudioSampleRate, AudioBitDepth, AudioChannels, 0, len(audioData))
+	event := wyoming.NewAudioChunkEvent(AudioSampleRate, AudioBitDepth, AudioChannels, 0, len(audioData))
 	if err := t.client.WriteEvent(event, audioData); err != nil {
 		t.connected = false
 		return fmt.Errorf("failed to send audio-chunk: %w", err)
@@ -136,7 +137,7 @@ func (t *Transcriber) SendAudio(audioData []byte) error {
 	return nil
 }
 
-func (t *Transcriber) Recv() (*Transcript, error) {
+func (t *WyomingTranscriber) Recv() (*Transcript, error) {
 	if t.client == nil || !t.connected {
 		return nil, fmt.Errorf("not connected to Wyoming service")
 	}
@@ -152,7 +153,7 @@ func (t *Transcriber) Recv() (*Transcript, error) {
 	t.logger.Debug("received event from Wyoming", "type", event.Type)
 
 	switch event.Type {
-	case EventTranscript:
+	case wyoming.EventTranscript:
 		transcriptData, err := event.GetTranscriptData()
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse transcript data: %w", err)
@@ -173,7 +174,7 @@ func (t *Transcriber) Recv() (*Transcript, error) {
 	}
 }
 
-func (t *Transcriber) Close() error {
+func (t *WyomingTranscriber) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -185,7 +186,7 @@ func (t *Transcriber) Close() error {
 
 	if t.client != nil && t.audioSent {
 		t.logger.Debug("sending audio-stop event")
-		event := NewAudioStopEvent(0)
+		event := wyoming.NewAudioStopEvent(0)
 		if err := t.client.WriteEvent(event, nil); err != nil {
 			t.logger.Warn("failed to send audio-stop", "error", err)
 		} else {
@@ -203,7 +204,7 @@ func (t *Transcriber) Close() error {
 	return nil
 }
 
-func (t *Transcriber) SendAudioStop() error {
+func (t *WyomingTranscriber) SendAudioStop() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -216,7 +217,7 @@ func (t *Transcriber) SendAudioStop() error {
 	}
 
 	t.logger.Debug("sending audio-stop event (standalone)")
-	event := NewAudioStopEvent(0)
+	event := wyoming.NewAudioStopEvent(0)
 	if err := t.client.WriteEvent(event, nil); err != nil {
 		return fmt.Errorf("failed to send audio-stop: %w", err)
 	}
@@ -225,7 +226,7 @@ func (t *Transcriber) SendAudioStop() error {
 	return nil
 }
 
-func (t *Transcriber) Reset() {
+func (t *WyomingTranscriber) Reset() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -239,20 +240,20 @@ func (t *Transcriber) Reset() {
 	}
 }
 
-func (t *Transcriber) IsConnected() bool {
+func (t *WyomingTranscriber) IsConnected() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.connected
 }
 
-func (t *Transcriber) SilenceDetected() bool {
+func (t *WyomingTranscriber) SilenceDetected() bool {
 	if t.vadDetector == nil {
 		return false
 	}
 	return t.vadDetector.SpeechEnded()
 }
 
-func (t *Transcriber) ResetVAD() {
+func (t *WyomingTranscriber) ResetVAD() {
 	if t.vadDetector != nil {
 		t.vadDetector.Reset()
 	}

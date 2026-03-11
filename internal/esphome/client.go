@@ -58,24 +58,26 @@ type AudioEvent struct {
 }
 
 type Client struct {
-	mu            sync.Mutex
-	address       string
-	logger        *slog.Logger
-	connected     bool
-	closed        bool
-	esphomeClient *ESPHomeClient
-	eventChannel  chan VoiceAssistantEvent
-	audioChannel  chan AudioEvent
-	stopChannel   chan struct{}
+	mu             sync.Mutex
+	address        string
+	logger         *slog.Logger
+	connected      bool
+	closed         bool
+	esphomeClient  *ESPHomeClient
+	eventChannel   chan VoiceAssistantEvent
+	audioChannel   chan AudioEvent
+	commandChannel chan Command
+	stopChannel    chan struct{}
 }
 
 func NewClient(address string, logger *slog.Logger) *Client {
 	return &Client{
-		address:      address,
-		logger:       logger,
-		eventChannel: make(chan VoiceAssistantEvent, 10),
-		audioChannel: make(chan AudioEvent, 10),
-		stopChannel:  make(chan struct{}),
+		address:        address,
+		logger:         logger,
+		eventChannel:   make(chan VoiceAssistantEvent, 10),
+		audioChannel:   make(chan AudioEvent, 100),
+		commandChannel: make(chan Command, 10),
+		stopChannel:    make(chan struct{}),
 	}
 }
 
@@ -114,6 +116,7 @@ func (c *Client) Connect(ctx context.Context) error {
 	c.connected = true
 
 	go c.handleMessages()
+	go c.handleCommands()
 
 	return nil
 }
@@ -283,41 +286,50 @@ func (c *Client) Events() <-chan VoiceAssistantEvent {
 	return c.eventChannel
 }
 
-func (c *Client) SendVADEvent(ctx context.Context, vadEnd bool) error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
-	if !c.connected || c.esphomeClient == nil {
-		return ErrNotConnected
-	}
-
-	eventType := api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_VAD_END
-	if !vadEnd {
-		eventType = api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_VAD_START
-	}
-
-	event := &api.VoiceAssistantEventResponse{
-		EventType: eventType,
-	}
-
-	c.logger.Info("sending VAD event to ESPHome", "vad_end", vadEnd)
-
-	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
-		c.logger.Error("failed to send VAD event", "error", err)
-		return err
-	}
-
-	return nil
+func (c *Client) AudioEvents() <-chan AudioEvent {
+	return c.audioChannel
 }
 
-func (c *Client) SendSTTEvent(ctx context.Context, start bool) error {
+func (c *Client) Commands() chan<- Command {
+	return c.commandChannel
+}
+
+func (c *Client) handleCommands() {
+	for {
+		select {
+		case <-c.stopChannel:
+			return
+		case cmd := <-c.commandChannel:
+			c.processCommand(cmd)
+		}
+	}
+}
+
+func (c *Client) processCommand(cmd Command) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	if !c.connected || c.esphomeClient == nil {
-		return ErrNotConnected
+		return
 	}
 
+	switch cmd.Type {
+	case CommandSTTStart:
+		c.sendSTTEvent(true)
+	case CommandSTTEnd:
+		c.sendSTTEvent(false)
+	case CommandVADStart:
+		c.sendVADEvent(false)
+	case CommandVADEnd:
+		c.sendVADEvent(true)
+	case CommandTTSStart:
+		c.sendTTSEvent(true)
+	case CommandTTSEnd:
+		c.sendTTSEvent(false)
+	}
+}
+
+func (c *Client) sendSTTEvent(start bool) {
 	eventType := api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_END
 	if start {
 		eventType = api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_START
@@ -331,14 +343,41 @@ func (c *Client) SendSTTEvent(ctx context.Context, start bool) error {
 
 	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
 		c.logger.Error("failed to send STT event", "error", err)
-		return err
 	}
-
-	return nil
 }
 
-func (c *Client) AudioEvents() <-chan AudioEvent {
-	return c.audioChannel
+func (c *Client) sendVADEvent(vadEnd bool) {
+	eventType := api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_VAD_END
+	if !vadEnd {
+		eventType = api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_VAD_START
+	}
+
+	event := &api.VoiceAssistantEventResponse{
+		EventType: eventType,
+	}
+
+	c.logger.Info("sending VAD event to ESPHome", "vad_end", vadEnd)
+
+	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
+		c.logger.Error("failed to send VAD event", "error", err)
+	}
+}
+
+func (c *Client) sendTTSEvent(start bool) {
+	eventType := api.VoiceAssistantEvent_VOICE_ASSISTANT_TTS_END
+	if start {
+		eventType = api.VoiceAssistantEvent_VOICE_ASSISTANT_TTS_START
+	}
+
+	event := &api.VoiceAssistantEventResponse{
+		EventType: eventType,
+	}
+
+	c.logger.Info("sending TTS event to ESPHome", "start", start)
+
+	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
+		c.logger.Error("failed to send TTS event", "error", err)
+	}
 }
 
 func (c *Client) Close() error {
