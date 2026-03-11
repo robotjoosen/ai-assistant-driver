@@ -45,7 +45,7 @@ func (c *Controller) handleAudioEvent(audio esphome.AudioEvent) {
 		return
 	}
 
-	if transcriber.SilenceDetected() {
+	if transcriber.SilenceDetected() && c.phase == PhaseListening {
 		c.config.Logger.Info("VAD detected end of speech")
 		c.commands <- esphome.Command{Type: esphome.CommandVADEnd}
 		c.handleListeningEnd()
@@ -82,6 +82,10 @@ func (c *Controller) handleListeningStart() {
 }
 
 func (c *Controller) handleListeningEnd() {
+	if c.phase != PhaseListening {
+		return
+	}
+
 	transcriber := c.config.Transcriber
 
 	if err := transcriber.SendAudioStop(); err != nil {
@@ -124,6 +128,12 @@ func (c *Controller) handleListeningEnd() {
 }
 
 func (c *Controller) handleThinkingStart() {
+	if c.phase == PhaseThinking {
+		c.config.Logger.Info("thinking phase already started")
+
+		return
+	}
+
 	c.phase = PhaseThinking
 	c.config.Logger.Info("thinking phase started", "transcript", c.transcript)
 
@@ -148,6 +158,10 @@ func (c *Controller) handleThinkingStart() {
 }
 
 func (c *Controller) handleReplyStart() {
+	if c.phase != PhaseThinking {
+		return
+	}
+
 	c.phase = PhaseReply
 	c.config.Logger.Info("reply phase started")
 

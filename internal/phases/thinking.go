@@ -22,8 +22,6 @@ func NewThinkingPhase(aiClient ai.Client, logger *slog.Logger) *ThinkingPhase {
 }
 
 func (p *ThinkingPhase) Run(ctx context.Context, transcript string) string {
-	p.logger.Info("thinking phase started", "transcript", transcript)
-
 	response, err := p.aiClient.Chat(ctx, transcript)
 	if err != nil {
 		p.logger.Error("failed to get LLM response", "error", err)
