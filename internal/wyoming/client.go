@@ -120,7 +120,12 @@ func (c *Client) ReadEvent() (*Event, []byte, error) {
 	}
 
 	if jsonEvt.DataLength > 0 {
-		if err := json.Unmarshal(jsonEvt.Data, &event.Data); err != nil {
+		dataBytes := make([]byte, jsonEvt.DataLength)
+		if _, err := io.ReadFull(c.conn, dataBytes); err != nil {
+			return nil, nil, fmt.Errorf("failed to read event data: %w", err)
+		}
+		log.Printf("[WYOMING] Read %d bytes of event data: %s", jsonEvt.DataLength, string(dataBytes))
+		if err := json.Unmarshal(dataBytes, &event.Data); err != nil {
 			return nil, nil, fmt.Errorf("failed to parse event data: %w", err)
 		}
 	}
