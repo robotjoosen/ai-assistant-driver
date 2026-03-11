@@ -8,7 +8,13 @@ import (
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
 	"github.com/robotjoosen/ai-assistant-driver/internal/vad"
-	"github.com/robotjoosen/ai-assistant-driver/internal/whisper"
+)
+
+const (
+	DefaultWyomingPort = 10300
+	AudioSampleRate    = 16000
+	AudioBitDepth      = 2
+	AudioChannels      = 1
 )
 
 type Transcriber struct {
@@ -33,7 +39,7 @@ func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig, logger *s
 
 	port := cfg.Port
 	if port == 0 {
-		port = 10300
+		port = DefaultWyomingPort
 	}
 
 	language := cfg.Language
@@ -102,8 +108,8 @@ func (t *Transcriber) SendAudio(audioData []byte) error {
 	}
 
 	if !t.audioSent {
-		t.logger.Debug("sending audio-start to Wyoming", "rate", 16000, "width", 2, "channels", 1)
-		event := NewAudioStartEvent(16000, 2, 1)
+		t.logger.Debug("sending audio-start to Wyoming", "rate", AudioSampleRate, "width", AudioBitDepth, "channels", AudioChannels)
+		event := NewAudioStartEvent(AudioSampleRate, AudioBitDepth, AudioChannels)
 		if err := t.client.WriteEvent(event, nil); err != nil {
 			return fmt.Errorf("failed to send audio-start: %w", err)
 		}
@@ -112,7 +118,7 @@ func (t *Transcriber) SendAudio(audioData []byte) error {
 	}
 
 	t.logger.Debug("sending audio-chunk to Wyoming", "size", len(audioData))
-	event := NewAudioChunkEvent(16000, 2, 1, 0, len(audioData))
+	event := NewAudioChunkEvent(AudioSampleRate, AudioBitDepth, AudioChannels, 0, len(audioData))
 	if err := t.client.WriteEvent(event, audioData); err != nil {
 		t.connected = false
 		return fmt.Errorf("failed to send audio-chunk: %w", err)
@@ -130,7 +136,7 @@ func (t *Transcriber) SendAudio(audioData []byte) error {
 	return nil
 }
 
-func (t *Transcriber) Recv() (*whisper.Transcript, error) {
+func (t *Transcriber) Recv() (*Transcript, error) {
 	if t.client == nil || !t.connected {
 		return nil, fmt.Errorf("not connected to Wyoming service")
 	}
@@ -154,7 +160,7 @@ func (t *Transcriber) Recv() (*whisper.Transcript, error) {
 
 		_ = payload
 
-		return &whisper.Transcript{
+		return &Transcript{
 			Text:    transcriptData.Text,
 			Start:   0,
 			End:     0,

@@ -5,14 +5,14 @@ import (
 	"log/slog"
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
-	"github.com/robotjoosen/ai-assistant-driver/internal/whisper"
+	"github.com/robotjoosen/ai-assistant-driver/internal/wyoming"
 )
 
 func handleVoiceAssistantEvent(
 	ctx context.Context,
 	event esphome.VoiceAssistantEvent,
 	state *appState,
-	transcriber whisper.StreamTranscriber,
+	transcriber wyoming.StreamTranscriber,
 	client *esphome.Client,
 	logger *slog.Logger,
 ) bool {
@@ -20,22 +20,22 @@ func handleVoiceAssistantEvent(
 
 	switch event.Phase {
 	case esphome.VoiceAssistantPhaseListening:
-		if state.streaming || state.whisperFailed {
+		if state.streaming || state.transcriberFailed {
 			return false
 		}
 
 		transcriber.ResetVAD()
 
-		if !connectWhisper(ctx, transcriber, logger) {
-			state.whisperRetries++
-			if state.whisperRetries >= maxWhisperRetries {
-				logger.Error("whisper connection failed after max retries, falling back to listening only")
-				state.whisperFailed = true
+		if !connectTranscriber(ctx, transcriber, logger) {
+			state.transcriberRetries++
+			if state.transcriberRetries >= maxWhisperRetries {
+				logger.Error("transcriber connection failed after max retries, falling back to listening only")
+				state.transcriberFailed = true
 			}
 			return false
 		}
 
-		state.whisperRetries = 0
+		state.transcriberRetries = 0
 		state.streaming = true
 		state.audioSent = false
 
@@ -46,7 +46,7 @@ func handleVoiceAssistantEvent(
 		return true
 	case esphome.VoiceAssistantPhaseThinking:
 		if state.streaming {
-			disconnectWhisperGraceful(ctx, transcriber, client, logger)
+			disconnectTranscriberGraceful(ctx, transcriber, client, logger)
 			state.streaming = false
 			transcriber.Reset()
 		}
@@ -54,7 +54,7 @@ func handleVoiceAssistantEvent(
 		return false
 	case esphome.VoiceAssistantPhaseIdle, esphome.VoiceAssistantPhaseError:
 		if state.streaming {
-			disconnectWhisperGraceful(ctx, transcriber, client, logger)
+			disconnectTranscriberGraceful(ctx, transcriber, client, logger)
 			state.streaming = false
 			transcriber.Reset()
 		}
@@ -69,7 +69,7 @@ func handleAudioEvent(
 	ctx context.Context,
 	audio esphome.AudioEvent,
 	state *appState,
-	transcriber whisper.StreamTranscriber,
+	transcriber wyoming.StreamTranscriber,
 	client *esphome.Client,
 	logger *slog.Logger,
 ) bool {
@@ -80,20 +80,20 @@ func handleAudioEvent(
 	}
 
 	if err := transcriber.SendAudio(audio.Data); err != nil {
-		logger.Error("failed to send audio to whisper", "error", err)
+		logger.Error("failed to send audio to transcriber", "error", err)
 		state.streaming = false
 		transcriber.Reset()
 
-		state.whisperRetries++
-		if state.whisperRetries >= maxWhisperRetries {
-			logger.Error("whisper reconnection failed after max retries, falling back to listening only")
-			state.whisperFailed = true
+		state.transcriberRetries++
+		if state.transcriberRetries >= maxWhisperRetries {
+			logger.Error("transcriber reconnection failed after max retries, falling back to listening only")
+			state.transcriberFailed = true
 			return false
 		}
 
-		logger.Warn("whisper send failed, attempting reconnect", "attempt", state.whisperRetries, "max", maxWhisperRetries)
+		logger.Warn("transcriber send failed, attempting reconnect", "attempt", state.transcriberRetries, "max", maxWhisperRetries)
 
-		if reconnectWhisper(ctx, transcriber, logger) {
+		if reconnectTranscriber(ctx, transcriber, logger) {
 			state.streaming = true
 			return true
 		}
@@ -115,7 +115,7 @@ func handleAudioEvent(
 			logger.Error("failed to send VAD event to ESPHome", "error", err)
 		}
 
-		disconnectWhisperGraceful(ctx, transcriber, client, logger)
+		disconnectTranscriberGraceful(ctx, transcriber, client, logger)
 		state.streaming = false
 		transcriber.Reset()
 		return false

@@ -12,10 +12,10 @@ const (
 )
 
 type appState struct {
-	streaming      bool
-	whisperRetries int
-	whisperFailed  bool
-	audioSent      bool
+	streaming          bool
+	transcriberRetries int
+	transcriberFailed  bool
+	audioSent          bool
 }
 
 func main() {
@@ -34,7 +34,7 @@ func main() {
 	}
 	shutdownMgr.Add(func() { client.Close() })
 
-	transcriber, err := newWhisperTranscriber(cfg, logger)
+	transcriber, err := newTranscriber(cfg, logger)
 	if err != nil {
 		logger.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()

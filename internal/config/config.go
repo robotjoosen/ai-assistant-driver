@@ -16,14 +16,8 @@ var (
 type Config struct {
 	ESPHomeAddress string `env:"ESP_HOME_ADDRESS"`
 	LogLevel       string `env:"LOG_LEVEL"`
-	Whisper        WhisperConfig
 	Wyoming        WyomingConfig
 	VAD            VadConfig
-}
-
-type WhisperConfig struct {
-	Host string `env:"WHISPER_HOST"`
-	Port int    `env:"WHISPER_PORT"`
 }
 
 type WyomingConfig struct {
@@ -46,10 +40,6 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		LogLevel: "info",
-		Whisper: WhisperConfig{
-			Host: "localhost",
-			Port: 8765,
-		},
 		Wyoming: WyomingConfig{
 			Host:     "localhost",
 			Port:     10300,

@@ -8,7 +8,6 @@ import (
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
-	"github.com/robotjoosen/ai-assistant-driver/internal/whisper"
 	"github.com/robotjoosen/ai-assistant-driver/internal/wyoming"
 )
 
@@ -47,18 +46,14 @@ func connectToESPHome(shutdownCtx context.Context, address string, logger *slog.
 	return client, nil
 }
 
-func newWhisperTranscriber(cfg *config.Config, logger *slog.Logger) (whisper.StreamTranscriber, error) {
-	if cfg.Wyoming.Host != "" || cfg.Wyoming.Port != 0 {
-		transcriber, err := wyoming.NewTranscriber(cfg.Wyoming, cfg.VAD, logger)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize Wyoming transcriber: %w", err)
-		}
-		return transcriber, nil
+func newTranscriber(cfg *config.Config, logger *slog.Logger) (wyoming.StreamTranscriber, error) {
+	if cfg.Wyoming.Host == "" && cfg.Wyoming.Port == 0 {
+		return nil, fmt.Errorf("Wyoming configuration is required. Please set WYOMING_HOST and WYOMING_PORT")
 	}
 
-	transcriber, err := whisper.NewWebSocketTranscriber(cfg.Whisper, logger)
+	transcriber, err := wyoming.NewTranscriber(cfg.Wyoming, cfg.VAD, logger)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize whisper transcriber: %w", err)
+		return nil, fmt.Errorf("failed to initialize Wyoming transcriber: %w", err)
 	}
 
 	return transcriber, nil
