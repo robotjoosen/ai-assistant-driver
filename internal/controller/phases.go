@@ -153,7 +153,10 @@ func (c *Controller) handleThinkingStart() {
 	}
 
 	c.llmResponse = response
-	slog.Info("LLM response received", "response_length", len(response))
+	slog.Info("LLM response received",
+		slog.Int("response_length", len(response)),
+		slog.String("response", response),
+	)
 
 	c.handleReplyStart()
 }

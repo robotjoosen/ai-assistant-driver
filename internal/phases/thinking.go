@@ -26,6 +26,9 @@ func (p *ThinkingPhase) Run(ctx context.Context, transcript string) string {
 		return ErrorResponse
 	}
 
-	slog.Info("thinking phase completed", "response_length", len(response))
+	slog.Info("thinking phase completed",
+		slog.Int("response_length", len(response)),
+	)
+
 	return response
 }
