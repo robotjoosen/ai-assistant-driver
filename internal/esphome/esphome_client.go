@@ -33,6 +33,12 @@ const (
 	msgSubscribeStatesRequest = 20
 	msgSubscribeLogsRequest   = 28
 
+	msgBinarySensorStateResponse = 21
+	msgLightStateResponse        = 24
+	msgSwitchStateResponse       = 26
+	msgSelectStateResponse       = 53
+	msgMediaPlayerStateResponse  = 64
+
 	msgSubscribeVoiceAssistant = 89
 	msgVoiceAssistantRequest   = 90
 	msgVoiceAssistantResponse  = 91
@@ -79,8 +85,6 @@ func (c *ESPHomeClient) Connect(ctx context.Context) error {
 		return nil
 	}
 
-	c.logger.Info("connecting to ESPHome device", "address", c.address)
-
 	conn, err := net.DialTimeout("tcp", c.address, 10*time.Second)
 	if err != nil {
 		c.logger.Error("failed to dial ESPHome device", "error", err)
@@ -103,8 +107,6 @@ func (c *ESPHomeClient) Connect(ctx context.Context) error {
 		conn.Close()
 		return err
 	}
-
-	c.logger.Info("connected to ESPHome device", "address", c.address)
 
 	c.wg.Add(1)
 	go c.readLoop(bufio.NewReader(conn))
@@ -221,6 +223,16 @@ func getMessageForTypeID(typeID uint64) proto.Message {
 		return &api.SubscribeStatesRequest{}
 	case msgSubscribeLogsRequest:
 		return &api.SubscribeLogsRequest{}
+	case msgBinarySensorStateResponse:
+		return &api.BinarySensorStateResponse{}
+	case msgLightStateResponse:
+		return &api.LightStateResponse{}
+	case msgSwitchStateResponse:
+		return &api.SwitchStateResponse{}
+	case msgSelectStateResponse:
+		return &api.SelectStateResponse{}
+	case msgMediaPlayerStateResponse:
+		return &api.MediaPlayerStateResponse{}
 	case msgSubscribeVoiceAssistant:
 		return &api.SubscribeVoiceAssistantRequest{}
 	case msgVoiceAssistantRequest:
@@ -243,6 +255,11 @@ func (c *ESPHomeClient) routeMessage(msg proto.Message) {
 
 	msgTypeID := api.TypeID(msg)
 	c.logger.Debug("received message", "type", proto.MessageName(msg), "typeID", msgTypeID)
+
+	if _, ok := msg.(*api.PingRequest); ok {
+		c.sendWithTypeID(msgPingResponse, &api.PingResponse{})
+		return
+	}
 
 	c.pendingMu.Lock()
 	req, found := c.pendingReqs[msgTypeID]
@@ -450,6 +467,14 @@ func (c *ESPHomeClient) Close() error {
 	}
 
 	c.closed = true
+
+	c.pendingMu.Lock()
+	for _, req := range c.pendingReqs {
+		close(req.responseChan)
+	}
+	c.pendingReqs = make(map[uint64]*pendingRequest)
+	c.pendingMu.Unlock()
+
 	close(c.stopChan)
 
 	if c.conn != nil {

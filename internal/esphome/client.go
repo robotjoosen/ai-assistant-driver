@@ -62,6 +62,7 @@ type Client struct {
 	address       string
 	logger        *slog.Logger
 	connected     bool
+	closed        bool
 	esphomeClient *ESPHomeClient
 	eventChannel  chan VoiceAssistantEvent
 	audioChannel  chan AudioEvent
@@ -142,6 +143,16 @@ func (c *Client) handleMessage(msg proto.Message) {
 		c.handleVoiceAssistantEvent(m)
 	case *api.VoiceAssistantAudio:
 		c.handleVoiceAssistantAudio(m)
+	case *api.BinarySensorStateResponse:
+		c.handleBinarySensorState(m)
+	case *api.LightStateResponse:
+		c.handleLightState(m)
+	case *api.SwitchStateResponse:
+		c.handleSwitchState(m)
+	case *api.SelectStateResponse:
+		c.handleSelectState(m)
+	case *api.MediaPlayerStateResponse:
+		c.handleMediaPlayerState(m)
 	default:
 		c.logger.Debug("unhandled message", "type", proto.MessageName(msg))
 	}
@@ -188,6 +199,26 @@ func (c *Client) handleVoiceAssistantAudio(audio *api.VoiceAssistantAudio) {
 	}
 }
 
+func (c *Client) handleBinarySensorState(state *api.BinarySensorStateResponse) {
+	c.logger.Info("binary sensor state", "key", state.Key, "state", state.State, "missing", state.MissingState)
+}
+
+func (c *Client) handleLightState(state *api.LightStateResponse) {
+	c.logger.Info("light state", "key", state.Key, "state", state.State, "brightness", state.Brightness, "effect", state.Effect)
+}
+
+func (c *Client) handleSwitchState(state *api.SwitchStateResponse) {
+	c.logger.Info("switch state", "key", state.Key, "state", state.State)
+}
+
+func (c *Client) handleSelectState(state *api.SelectStateResponse) {
+	c.logger.Info("select state", "key", state.Key, "state", state.State, "missing", state.MissingState)
+}
+
+func (c *Client) handleMediaPlayerState(state *api.MediaPlayerStateResponse) {
+	c.logger.Info("media player state", "key", state.Key, "state", state.State, "volume", state.Volume, "muted", state.Muted)
+}
+
 func (c *Client) handleVoiceAssistantRequest(req *api.VoiceAssistantRequest) {
 	if req.Start {
 		c.logger.Info("voice assistant start request received", "conversation_id", req.ConversationId)
@@ -203,6 +234,12 @@ func (c *Client) handleVoiceAssistantRequest(req *api.VoiceAssistantRequest) {
 		}
 
 		c.logger.Info("sent VoiceAssistantResponse", "port", response.Port)
+
+		select {
+		case c.eventChannel <- VoiceAssistantEvent{Phase: VoiceAssistantPhaseListening}:
+		default:
+			c.logger.Warn("event channel full, dropping start event")
+		}
 	} else {
 		c.logger.Info("voice assistant stopped")
 
@@ -252,10 +289,11 @@ func (c *Client) Close() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	if !c.connected {
+	if c.closed {
 		return nil
 	}
 
+	c.closed = true
 	close(c.stopChannel)
 
 	if c.esphomeClient != nil {

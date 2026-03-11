@@ -4,6 +4,9 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+
+	"github.com/caarlos0/env/v11"
+	"github.com/joho/godotenv"
 )
 
 var (
@@ -11,28 +14,52 @@ var (
 )
 
 type Config struct {
-	ESPHomeAddress string
-	LogLevel       string
+	ESPHomeAddress string `env:"ESP_HOME_ADDRESS"`
+	LogLevel       string `env:"LOG_LEVEL"`
+	Whisper        WhisperConfig
+	Wyoming        WyomingConfig
+}
+
+type WhisperConfig struct {
+	Host string `env:"WHISPER_HOST"`
+	Port int    `env:"WHISPER_PORT"`
+}
+
+type WyomingConfig struct {
+	Host     string `env:"WYOMING_HOST"`
+	Port     int    `env:"WYOMING_PORT"`
+	Language string `env:"WYOMING_LANGUAGE"`
 }
 
 func Load() (*Config, error) {
-	_ = os.Getenv("ESP_HOME_ADDRESS")
-	_ = os.Getenv("LOG_LEVEL")
+	if err := godotenv.Load(); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			slog.Debug("error loading .env file", "error", err)
+		}
+	}
 
-	address := os.Getenv("ESP_HOME_ADDRESS")
-	if address == "" {
+	cfg := &Config{
+		LogLevel: "info",
+		Whisper: WhisperConfig{
+			Host: "localhost",
+			Port: 8765,
+		},
+		Wyoming: WyomingConfig{
+			Host:     "localhost",
+			Port:     10300,
+			Language: "en",
+		},
+	}
+
+	if err := env.Parse(cfg); err != nil {
+		return nil, err
+	}
+
+	if cfg.ESPHomeAddress == "" {
 		return nil, ErrESPHomeAddressRequired
 	}
 
-	logLevel := os.Getenv("LOG_LEVEL")
-	if logLevel == "" {
-		logLevel = "info"
-	}
-
-	return &Config{
-		ESPHomeAddress: address,
-		LogLevel:       logLevel,
-	}, nil
+	return cfg, nil
 }
 
 func (c *Config) GetLogLevel() slog.Level {

@@ -1,65 +1,62 @@
 package main
 
 import (
-	"context"
-	"log/slog"
-	"os"
-	"os/signal"
-	"syscall"
+	"time"
 
-	"github.com/joho/godotenv"
-	"github.com/robotjoosen/ai-assistant-driver/internal/config"
-	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
+	"github.com/robotjoosen/ai-assistant-driver/internal/shutdown"
 )
 
+const (
+	maxWhisperRetries = 3
+	retryDelay        = 1 * time.Second
+)
+
+type appState struct {
+	streaming      bool
+	whisperRetries int
+	whisperFailed  bool
+}
+
 func main() {
-	if err := godotenv.Load(); err != nil {
-		slog.Debug("no .env file found, using environment variables")
-	}
-
-	cfg, err := config.Load()
-	if err != nil {
-		slog.Error("failed to load configuration", "error", err)
-		os.Exit(1)
-	}
-
-	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		Level: cfg.GetLogLevel(),
-	}))
-
-	slog.SetDefault(logger)
+	logger, cfg := loadConfiguration()
 
 	logger.Info("starting AI Assistant Driver", "address", cfg.ESPHomeAddress)
 
-	client := esphome.NewClient(cfg.ESPHomeAddress, logger)
+	shutdownMgr := shutdown.New()
 
-	if err := client.Connect(context.Background()); err != nil {
-		logger.Error("failed to connect to ESPHome device", "error", err)
-		os.Exit(1)
+	client, err := connectToESPHome(shutdownMgr.Context(), cfg.ESPHomeAddress, logger)
+	if err != nil {
+		logger.Error("setup failed", "error", err)
+		shutdownMgr.Cancel()
+		<-shutdownMgr.Done()
+		return
 	}
-	defer client.Close()
+	shutdownMgr.Add(func() { client.Close() })
 
-	logger.Info("connected to ESPHome device")
-
-	if err := client.SubscribeVoiceAssistant(context.Background()); err != nil {
-		logger.Error("failed to subscribe to voice assistant", "error", err)
-		os.Exit(1)
+	transcriber, err := newWhisperTranscriber(cfg, logger)
+	if err != nil {
+		logger.Error("setup failed", "error", err)
+		shutdownMgr.Cancel()
+		<-shutdownMgr.Done()
+		return
 	}
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+	shutdownMgr.Add(func() { transcriber.Close() })
 
 	logger.Info("listening for voice assistant events and audio")
 
-	for {
-		select {
-		case event := <-client.Events():
-			logger.Info("voice assistant event", "phase", event.Phase.String(), "error", event.Error)
-		case audio := <-client.AudioEvents():
-			logger.Info("received audio", "size", len(audio.Data), "end", audio.End)
-		case <-sigChan:
-			logger.Info("shutting down")
-			return
+	go func() {
+		state := &appState{}
+		for {
+			select {
+			case <-shutdownMgr.Context().Done():
+				return
+			case event := <-client.Events():
+				handleVoiceAssistantEvent(shutdownMgr.Context(), event, state, transcriber, logger)
+			case audio := <-client.AudioEvents():
+				handleAudioEvent(shutdownMgr.Context(), audio, state, transcriber, logger)
+			}
 		}
-	}
+	}()
+
+	<-shutdownMgr.Done()
 }

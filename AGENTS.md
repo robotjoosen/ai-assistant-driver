@@ -120,7 +120,6 @@ import (
 
     "github.com/google/uuid"
     "github.com/kr/text"
-    "github.com/sirupsen/logrus"
 
     "github.com/robotjoosen/ai-assistant-driver/internal/audio"
     "github.com/robotjoosen/ai-assistant-driver/internal/config"
@@ -142,6 +141,8 @@ import (
 - Use sentinel errors for known conditions: `var ErrNotFound = errors.New("not found")`
 - Avoid `panic()` except for truly unrecoverable conditions
 - Log errors with appropriate level before returning when meaningful
+- **NEVER ignore errors using `_ =` or empty assignments** - always handle or log them
+- **NEVER use `time.Sleep()` for delays** - use context cancellation, channels, or proper synchronization instead
 
 ```go
 // Good
@@ -235,12 +236,11 @@ func TestAudioProcessor_RejectsInvalidSampleRate(t *testing.T) {
 ```
 .
 ├── cmd/
-│   └── ai-assistant-driver/    # Main application entry point
+│   └── ai-assistant-driver/   # Main application entry point
 ├── internal/
-│   ├── config/                 # Configuration handling
+│   ├── config/                # Configuration handling
 │   ├── esphome/               # ESPHome device client
-│   ├── audio/                  # Audio processing logic (future)
-│   └── vad/                    # Voice Activity Detection (future)
+│   └── whisper/               # Speech to text bridge
 ├── pkg/                       # Reusable packages (if any)
 ├── testdata/                  # Test fixtures and data
 ├── .env.example               # Example environment variables
@@ -248,6 +248,28 @@ func TestAudioProcessor_RejectsInvalidSampleRate(t *testing.T) {
 ├── go.sum
 └── Makefile                   # Common build tasks (if present)
 ```
+
+---
+
+## Wyoming Protocol
+
+This project uses the [Wyoming Protocol](https://github.com/OHF-Voice/wyoming/blob/main/README.md) for communication with faster-whisper and other voice services.
+
+### Event Flow for Speech-to-Text
+
+1. → `transcribe` event with `language` (required)
+2. → `audio-start` (required)
+3. → `audio-chunk` (required, one or more)
+4. → `audio-stop` (required)
+5. ← `transcript` (required)
+
+### Configuration
+
+The Wyoming service can be configured with the following environment variables:
+
+- `WYOMING_HOST` - Wyoming server host (default: "localhost")
+- `WYOMING_PORT` - Wyoming server port (default: 10300)
+- `WYOMING_LANGUAGE` - Language for transcription (default: "en")
 
 ---
 
