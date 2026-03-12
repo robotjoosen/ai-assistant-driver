@@ -161,9 +161,7 @@ func readLine(conn net.Conn) ([]byte, error) {
 	var line []byte
 	buf := make([]byte, 1)
 	for {
-		log.Printf("[WYOMING] Attempting to read from connection...")
-		n, err := conn.Read(buf)
-		log.Printf("[WYOMING] Read returned: n=%d, err=%v", n, err)
+		_, err := conn.Read(buf)
 		if err != nil {
 			return nil, err
 		}
