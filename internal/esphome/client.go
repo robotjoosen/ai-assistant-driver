@@ -315,19 +315,31 @@ func (c *Client) processCommand(cmd Command) {
 	case CommandSTTStart:
 		c.sendSTTEvent(true)
 	case CommandSTTEnd:
-		c.sendSTTEvent(false)
+		var payload STTEndPayload
+		if p, ok := cmd.Payload.(STTEndPayload); ok {
+			payload = p
+		}
+		c.sendSTTEvent(false, payload)
 	case CommandVADStart:
 		c.sendVADEvent(false)
 	case CommandVADEnd:
 		c.sendVADEvent(true)
 	case CommandTTSStart:
-		c.sendTTSEvent(true)
+		var payload TTSEndPayload
+		if p, ok := cmd.Payload.(TTSEndPayload); ok {
+			payload = p
+		}
+		c.sendTTSEvent(true, payload)
 	case CommandTTSEnd:
-		c.sendTTSEvent(false)
+		var payload TTSEndPayload
+		if p, ok := cmd.Payload.(TTSEndPayload); ok {
+			payload = p
+		}
+		c.sendTTSEvent(false, payload)
 	}
 }
 
-func (c *Client) sendSTTEvent(start bool) {
+func (c *Client) sendSTTEvent(start bool, payload ...STTEndPayload) {
 	eventType := api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_END
 	if start {
 		eventType = api.VoiceAssistantEvent_VOICE_ASSISTANT_STT_START
@@ -337,7 +349,14 @@ func (c *Client) sendSTTEvent(start bool) {
 		EventType: eventType,
 	}
 
-	slog.Info("sending STT event to ESPHome", "start", start)
+	if len(payload) > 0 && payload[0].Text != "" {
+		event.Data = append(event.Data, &api.VoiceAssistantEventData{
+			Name:  "text",
+			Value: payload[0].Text,
+		})
+	}
+
+	slog.Info("sending STT event to ESPHome", "start", start, "has_text", len(payload) > 0 && payload[0].Text != "")
 
 	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
 		slog.Error("failed to send STT event", "error", err)
@@ -361,7 +380,7 @@ func (c *Client) sendVADEvent(vadEnd bool) {
 	}
 }
 
-func (c *Client) sendTTSEvent(start bool) {
+func (c *Client) sendTTSEvent(start bool, payload ...TTSEndPayload) {
 	eventType := api.VoiceAssistantEvent_VOICE_ASSISTANT_TTS_END
 	if start {
 		eventType = api.VoiceAssistantEvent_VOICE_ASSISTANT_TTS_START
@@ -369,6 +388,22 @@ func (c *Client) sendTTSEvent(start bool) {
 
 	event := &api.VoiceAssistantEventResponse{
 		EventType: eventType,
+	}
+
+	if len(payload) > 0 {
+		p := payload[0]
+		if p.Text != "" {
+			event.Data = append(event.Data, &api.VoiceAssistantEventData{
+				Name:  "text",
+				Value: p.Text,
+			})
+		}
+		if !start && p.AudioURL != "" {
+			event.Data = append(event.Data, &api.VoiceAssistantEventData{
+				Name:  "url",
+				Value: p.AudioURL,
+			})
+		}
 	}
 
 	slog.Info("sending TTS event to ESPHome", "start", start)

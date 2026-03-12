@@ -44,10 +44,21 @@ func main() {
 		return
 	}
 
+	ttsSynthesizer, ttsServer, err := newTTSSynthesizer(cfg)
+	if err != nil {
+		slog.Error("setup failed", "error", err)
+		shutdownMgr.Cancel()
+		<-shutdownMgr.Done()
+		return
+	}
+	shutdownMgr.Add(func() { ttsServer.Close() })
+
 	ctrl := controller.New(
 		controller.Config{
-			Transcriber: transcriberClient,
-			AIClient:    aiClient,
+			Transcriber:    transcriberClient,
+			AIClient:       aiClient,
+			TTSSynthesizer: ttsSynthesizer,
+			TTSServer:      ttsServer,
 		},
 		esphomeClient.Events(),
 		esphomeClient.AudioEvents(),

@@ -23,6 +23,11 @@ func NewClient(host string, port int) (*Client, error) {
 		return nil, fmt.Errorf("failed to connect to Wyoming service: %w", err)
 	}
 
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		tcpConn.SetKeepAlive(true)
+		tcpConn.SetKeepAlivePeriod(30 * time.Second)
+	}
+
 	log.Printf("[WYOMING] Connected successfully")
 
 	return &Client{
@@ -94,6 +99,8 @@ func (c *Client) WriteEvent(event *Event, payload []byte) error {
 		}
 	}
 
+	c.conn.SetReadDeadline(time.Time{})
+
 	log.Printf("[WYOMING] Event written successfully: type=%s", event.Type)
 
 	return nil
@@ -144,7 +151,9 @@ func (c *Client) ReadEvent() (*Event, []byte, error) {
 }
 
 func (c *Client) ReadEventWithTimeout(timeout time.Duration) (*Event, []byte, error) {
+	log.Printf("[WYOMING] Setting read deadline: %v", timeout)
 	c.conn.SetReadDeadline(time.Now().Add(timeout))
+	log.Printf("[WYOMING] Read deadline set, calling ReadEvent...")
 	return c.ReadEvent()
 }
 
@@ -152,7 +161,10 @@ func readLine(conn net.Conn) ([]byte, error) {
 	var line []byte
 	buf := make([]byte, 1)
 	for {
-		if _, err := conn.Read(buf); err != nil {
+		log.Printf("[WYOMING] Attempting to read from connection...")
+		n, err := conn.Read(buf)
+		log.Printf("[WYOMING] Read returned: n=%d, err=%v", n, err)
+		if err != nil {
 			return nil, err
 		}
 		if buf[0] == '\n' {

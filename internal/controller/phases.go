@@ -117,7 +117,10 @@ func (c *Controller) handleListeningEnd() {
 		slog.Error("error closing transcriber", "error", err)
 	}
 
-	c.commands <- esphome.Command{Type: esphome.CommandSTTEnd}
+	c.commands <- esphome.Command{
+		Type:    esphome.CommandSTTEnd,
+		Payload: esphome.STTEndPayload{Text: c.transcript},
+	}
 
 	if c.transcript == "" {
 		slog.Info("no transcript received, staying idle")
@@ -169,7 +172,7 @@ func (c *Controller) handleReplyStart() {
 	c.phase = PhaseReply
 	slog.Info("reply phase started")
 
-	replyPhase := phases.NewReplyPhase()
+	replyPhase := phases.NewReplyPhase(c.config.TTSSynthesizer, c.config.TTSServer, c.commands)
 	if err := replyPhase.Run(context.Background(), c.llmResponse); err != nil {
 		slog.Error("reply phase failed", "error", err)
 		c.sendError(ErrorEvent{

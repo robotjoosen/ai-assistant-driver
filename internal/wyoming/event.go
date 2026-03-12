@@ -8,13 +8,15 @@ import (
 type EventType string
 
 const (
-	EventAudioStart EventType = "audio-start"
-	EventAudioChunk EventType = "audio-chunk"
-	EventAudioStop  EventType = "audio-stop"
-	EventTranscript EventType = "transcript"
-	EventInfo       EventType = "info"
-	EventVersion    EventType = "version"
-	EventTranscribe EventType = "transcribe"
+	EventAudioStart        EventType = "audio-start"
+	EventAudioChunk        EventType = "audio-chunk"
+	EventAudioStop         EventType = "audio-stop"
+	EventTranscript        EventType = "transcript"
+	EventInfo              EventType = "info"
+	EventVersion           EventType = "version"
+	EventTranscribe        EventType = "transcribe"
+	EventSynthesize        EventType = "synthesize"
+	EventSynthesizeStopped EventType = "synthesize-stopped"
 )
 
 type Event struct {
@@ -46,6 +48,11 @@ type TranscribeData struct {
 	Language string      `json:"language,omitempty"`
 	Name     string      `json:"name,omitempty"`
 	Context  interface{} `json:"context,omitempty"`
+}
+
+type SynthesizeData struct {
+	Text  string      `json:"text"`
+	Voice interface{} `json:"voice,omitempty"`
 }
 
 type Transcript struct {
@@ -127,6 +134,27 @@ func NewTranscribeEvent(language string) *Event {
 			"language": language,
 		},
 	}
+}
+
+func NewSynthesizeEvent(text string) *Event {
+	return &Event{
+		Type: EventSynthesize,
+		Data: map[string]any{
+			"text": text,
+		},
+	}
+}
+
+func (e *Event) GetSynthesizeData() (*SynthesizeData, error) {
+	dataBytes, err := json.Marshal(e.Data)
+	if err != nil {
+		return nil, err
+	}
+	var synthesizeData SynthesizeData
+	if err := json.Unmarshal(dataBytes, &synthesizeData); err != nil {
+		return nil, err
+	}
+	return &synthesizeData, nil
 }
 
 func (e *Event) ToJSON() ([]byte, error) {

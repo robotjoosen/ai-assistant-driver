@@ -43,6 +43,7 @@ func (c *OllamaClient) Chat(ctx context.Context, prompt string) (string, error) 
 		Model:  c.model,
 		Prompt: prompt,
 		Stream: &stream,
+		Think:  &api.ThinkValue{Value: false},
 	}
 
 	if c.systemMessage != "" {

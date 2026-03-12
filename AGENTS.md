@@ -253,15 +253,11 @@ func TestAudioProcessor_RejectsInvalidSampleRate(t *testing.T) {
 
 ## Wyoming Protocol
 
-This project uses the [Wyoming Protocol](https://github.com/OHF-Voice/wyoming/blob/main/README.md) for communication with faster-whisper and other voice services.
+This project uses the [Wyoming Protocol](./docs/wyoming.md) for communication with faster-whisper and other voice services.
 
-### Event Flow for Speech-to-Text
+## ESPHOME RPC
 
-1. → `transcribe` event with `language` (required)
-2. → `audio-start` (required)
-3. → `audio-chunk` (required, one or more)
-4. → `audio-stop` (required)
-5. ← `transcript` (required)
+This project uses [rpc](./docs/esphome/api.proto) for communication with ESPHOME.
 
 ### Configuration
 

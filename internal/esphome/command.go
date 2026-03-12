@@ -15,3 +15,12 @@ type Command struct {
 	Type    CommandType
 	Payload interface{}
 }
+
+type TTSEndPayload struct {
+	Text     string
+	AudioURL string
+}
+
+type STTEndPayload struct {
+	Text string
+}

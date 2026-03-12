@@ -11,6 +11,7 @@ import (
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
 	"github.com/robotjoosen/ai-assistant-driver/internal/transcriber"
+	"github.com/robotjoosen/ai-assistant-driver/internal/tts"
 )
 
 func loadConfiguration() (*config.Config, error) {
@@ -73,4 +74,21 @@ func newAIClient(cfg *config.Config) (ai.Client, error) {
 	slog.Info("AI client initialized", "host", cfg.AI.Host, "port", cfg.AI.Port, "model", cfg.AI.Model)
 
 	return client, nil
+}
+
+func newTTSSynthesizer(cfg *config.Config) (tts.Synthesizer, *tts.Server, error) {
+	synthesizer, err := tts.NewSynthesizer(cfg.Wyoming)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to initialize TTS synthesizer: %w", err)
+	}
+
+	server := tts.NewServer(cfg.Wyoming.HTTPHost, cfg.Wyoming.HTTPPort)
+	if err := server.Start(); err != nil {
+		return nil, nil, fmt.Errorf("failed to start TTS server: %w", err)
+	}
+
+	slog.Info("TTS synthesizer initialized", "piper_host", cfg.Wyoming.PiperHost, "piper_port", cfg.Wyoming.PiperPort)
+	slog.Info("TTS server started", "url", server.URL())
+
+	return synthesizer, server, nil
 }

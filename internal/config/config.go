@@ -26,6 +26,13 @@ type WyomingConfig struct {
 	Host     string `env:"WYOMING_HOST"`
 	Port     int    `env:"WYOMING_PORT"`
 	Language string `env:"WYOMING_LANGUAGE"`
+
+	PiperHost     string `env:"PIPER_HOST"`
+	PiperPort     int    `env:"PIPER_PORT"`
+	PiperLanguage string `env:"PIPER_LANGUAGE"`
+
+	HTTPHost string `env:"HTTP_HOST"`
+	HTTPPort int    `env:"HTTP_PORT"`
 }
 
 type VadConfig struct {
@@ -50,9 +57,14 @@ func Load() (*Config, error) {
 	cfg := &Config{
 		LogLevel: "info",
 		Wyoming: WyomingConfig{
-			Host:     "localhost",
-			Port:     10300,
-			Language: "en",
+			Host:          "localhost",
+			Port:          10300,
+			Language:      "en",
+			PiperHost:     "localhost",
+			PiperPort:     10200,
+			PiperLanguage: "en",
+			HTTPHost:      "0.0.0.0",
+			HTTPPort:      8080,
 		},
 		VAD: VadConfig{
 			ThresholdRatio: 2.5,

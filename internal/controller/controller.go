@@ -7,6 +7,7 @@ import (
 	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
 	"github.com/robotjoosen/ai-assistant-driver/internal/transcriber"
+	"github.com/robotjoosen/ai-assistant-driver/internal/tts"
 )
 
 type Phase int
@@ -40,8 +41,10 @@ type ErrorEvent struct {
 }
 
 type Config struct {
-	Transcriber transcriber.Transcriber
-	AIClient    ai.Client
+	Transcriber    transcriber.Transcriber
+	AIClient       ai.Client
+	TTSSynthesizer tts.Synthesizer
+	TTSServer      *tts.Server
 }
 
 type Controller struct {
