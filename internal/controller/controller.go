@@ -52,9 +52,11 @@ type Controller struct {
 	phase       Phase
 	transcript  string
 	llmResponse string
+	ttsCleanup  func()
 
 	voiceAssistantEvents <-chan esphome.VoiceAssistantEvent
 	audioEvents          <-chan esphome.AudioEvent
+	mediaPlayerEvents    <-chan esphome.MediaPlayerEvent
 	commands             chan<- esphome.Command
 	errors               chan ErrorEvent
 }
@@ -63,6 +65,7 @@ func New(
 	cfg Config,
 	voiceAssistantEvents <-chan esphome.VoiceAssistantEvent,
 	audioEvents <-chan esphome.AudioEvent,
+	mediaPlayerEvents <-chan esphome.MediaPlayerEvent,
 	commands chan<- esphome.Command,
 ) *Controller {
 	return &Controller{
@@ -70,6 +73,7 @@ func New(
 		phase:                PhaseIdle,
 		voiceAssistantEvents: voiceAssistantEvents,
 		audioEvents:          audioEvents,
+		mediaPlayerEvents:    mediaPlayerEvents,
 		commands:             commands,
 		errors:               make(chan ErrorEvent, 10),
 	}
@@ -85,12 +89,28 @@ func (c *Controller) Run(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			if c.ttsCleanup != nil {
+				c.ttsCleanup()
+			}
 			slog.Info("phase controller stopped")
 			return
 		case event := <-c.voiceAssistantEvents:
 			c.handleVoiceAssistantEvent(event)
 		case audio := <-c.audioEvents:
 			c.handleAudioEvent(audio)
+		case mediaPlayer := <-c.mediaPlayerEvents:
+			c.handleMediaPlayerEvent(mediaPlayer)
 		}
+	}
+}
+
+func (c *Controller) handleMediaPlayerEvent(event esphome.MediaPlayerEvent) {
+	if event.State == "MEDIA_PLAYER_STATE_IDLE" && c.ttsCleanup != nil {
+		slog.Info("media player idle, cleaning up TTS file")
+		c.ttsCleanup()
+		c.ttsCleanup = nil
+
+		slog.Info("sending voice assistant end event")
+		c.commands <- esphome.Command{Type: esphome.CommandVoiceAssistantEnd}
 	}
 }

@@ -22,7 +22,7 @@ func NewReplyPhase(synthesizer tts.Synthesizer, server *tts.Server, commands cha
 	}
 }
 
-func (p *ReplyPhase) Run(ctx context.Context, response string) error {
+func (p *ReplyPhase) Run(ctx context.Context, response string) (func(), error) {
 	slog.Info("reply phase: synthesizing text", "text_length", len(response))
 
 	p.commands <- esphome.Command{Type: esphome.CommandTTSStart, Payload: esphome.TTSEndPayload{Text: response}}
@@ -31,7 +31,7 @@ func (p *ReplyPhase) Run(ctx context.Context, response string) error {
 	if err != nil {
 		slog.Error("reply phase: failed to synthesize", "error", err)
 		p.commands <- esphome.Command{Type: esphome.CommandTTSEnd, Payload: esphome.TTSEndPayload{Text: response}}
-		return err
+		return nil, err
 	}
 
 	slog.Info("reply phase: synthesized audio", "pcm_size", len(pcmData))
@@ -40,16 +40,16 @@ func (p *ReplyPhase) Run(ctx context.Context, response string) error {
 	if err != nil {
 		slog.Error("reply phase: failed to save WAV", "error", err)
 		p.commands <- esphome.Command{Type: esphome.CommandTTSEnd, Payload: esphome.TTSEndPayload{Text: response}}
-		return err
+		return nil, err
 	}
 
 	slog.Info("reply phase: saved WAV file", "path", wavPath)
 
-	audioURL, _, err := p.server.ServeWAV(wavPath)
+	audioURL, cleanup, err := p.server.ServeWAV(wavPath)
 	if err != nil {
 		slog.Error("reply phase: failed to serve WAV", "error", err)
 		p.commands <- esphome.Command{Type: esphome.CommandTTSEnd, Payload: esphome.TTSEndPayload{Text: response}}
-		return err
+		return nil, err
 	}
 
 	slog.Info("reply phase: audio URL", "url", audioURL)
@@ -59,5 +59,5 @@ func (p *ReplyPhase) Run(ctx context.Context, response string) error {
 		Payload: esphome.TTSEndPayload{Text: response, AudioURL: audioURL},
 	}
 
-	return nil
+	return cleanup, nil
 }

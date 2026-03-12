@@ -64,6 +64,7 @@ func (c *Controller) handleListeningStart() {
 	}
 
 	transcriber := c.config.Transcriber
+	transcriber.Reset()
 	transcriber.ResetVAD()
 
 	if err := transcriber.Connect(context.Background()); err != nil {
@@ -173,15 +174,22 @@ func (c *Controller) handleReplyStart() {
 	slog.Info("reply phase started")
 
 	replyPhase := phases.NewReplyPhase(c.config.TTSSynthesizer, c.config.TTSServer, c.commands)
-	if err := replyPhase.Run(context.Background(), c.llmResponse); err != nil {
+	cleanup, err := replyPhase.Run(context.Background(), c.llmResponse)
+	if err != nil {
 		slog.Error("reply phase failed", "error", err)
 		c.sendError(ErrorEvent{
 			Phase:       PhaseReply,
 			Message:     err.Error(),
 			Recoverable: false,
 		})
+		c.phase = PhaseIdle
+		c.transcript = ""
+		c.llmResponse = ""
+		slog.Info("reply phase completed")
+		return
 	}
 
+	c.ttsCleanup = cleanup
 	c.phase = PhaseIdle
 	c.transcript = ""
 	c.llmResponse = ""

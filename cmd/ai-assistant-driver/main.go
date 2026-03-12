@@ -62,6 +62,7 @@ func main() {
 		},
 		esphomeClient.Events(),
 		esphomeClient.AudioEvents(),
+		esphomeClient.MediaPlayerEvents(),
 		esphomeClient.Commands(),
 	)
 

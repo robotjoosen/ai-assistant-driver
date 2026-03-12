@@ -9,6 +9,7 @@ const (
 	CommandVADEnd
 	CommandTTSStart
 	CommandTTSEnd
+	CommandVoiceAssistantEnd
 )
 
 type Command struct {

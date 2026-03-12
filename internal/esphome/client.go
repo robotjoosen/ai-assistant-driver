@@ -57,25 +57,34 @@ type AudioEvent struct {
 	End  bool
 }
 
+type MediaPlayerEvent struct {
+	Key    uint32
+	State  string
+	Volume float32
+	Muted  bool
+}
+
 type Client struct {
-	mu             sync.Mutex
-	address        string
-	connected      bool
-	closed         bool
-	esphomeClient  *ESPHomeClient
-	eventChannel   chan VoiceAssistantEvent
-	audioChannel   chan AudioEvent
-	commandChannel chan Command
-	stopChannel    chan struct{}
+	mu                 sync.Mutex
+	address            string
+	connected          bool
+	closed             bool
+	esphomeClient      *ESPHomeClient
+	eventChannel       chan VoiceAssistantEvent
+	audioChannel       chan AudioEvent
+	mediaPlayerChannel chan MediaPlayerEvent
+	commandChannel     chan Command
+	stopChannel        chan struct{}
 }
 
 func NewClient(address string) *Client {
 	return &Client{
-		address:        address,
-		eventChannel:   make(chan VoiceAssistantEvent, 10),
-		audioChannel:   make(chan AudioEvent, 100),
-		commandChannel: make(chan Command, 10),
-		stopChannel:    make(chan struct{}),
+		address:            address,
+		eventChannel:       make(chan VoiceAssistantEvent, 10),
+		audioChannel:       make(chan AudioEvent, 100),
+		mediaPlayerChannel: make(chan MediaPlayerEvent, 10),
+		commandChannel:     make(chan Command, 10),
+		stopChannel:        make(chan struct{}),
 	}
 }
 
@@ -220,6 +229,17 @@ func (c *Client) handleSelectState(state *api.SelectStateResponse) {
 
 func (c *Client) handleMediaPlayerState(state *api.MediaPlayerStateResponse) {
 	slog.Info("media player state", "key", state.Key, "state", state.State, "volume", state.Volume, "muted", state.Muted)
+
+	select {
+	case c.mediaPlayerChannel <- MediaPlayerEvent{
+		Key:    state.Key,
+		State:  state.State.String(),
+		Volume: state.Volume,
+		Muted:  state.Muted,
+	}:
+	default:
+		slog.Warn("media player channel full, dropping event")
+	}
 }
 
 func (c *Client) handleVoiceAssistantRequest(req *api.VoiceAssistantRequest) {
@@ -288,6 +308,10 @@ func (c *Client) AudioEvents() <-chan AudioEvent {
 	return c.audioChannel
 }
 
+func (c *Client) MediaPlayerEvents() <-chan MediaPlayerEvent {
+	return c.mediaPlayerChannel
+}
+
 func (c *Client) Commands() chan<- Command {
 	return c.commandChannel
 }
@@ -336,6 +360,8 @@ func (c *Client) processCommand(cmd Command) {
 			payload = p
 		}
 		c.sendTTSEvent(false, payload)
+	case CommandVoiceAssistantEnd:
+		c.sendVoiceAssistantEnd()
 	}
 }
 
@@ -410,6 +436,18 @@ func (c *Client) sendTTSEvent(start bool, payload ...TTSEndPayload) {
 
 	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
 		slog.Error("failed to send TTS event", "error", err)
+	}
+}
+
+func (c *Client) sendVoiceAssistantEnd() {
+	event := &api.VoiceAssistantEventResponse{
+		EventType: api.VoiceAssistantEvent_VOICE_ASSISTANT_RUN_END,
+	}
+
+	slog.Info("sending voice assistant end event to ESPHome")
+
+	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
+		slog.Error("failed to send voice assistant end event", "error", err)
 	}
 }
 
