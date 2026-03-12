@@ -65,26 +65,31 @@ type MediaPlayerEvent struct {
 }
 
 type Client struct {
-	mu                 sync.Mutex
-	address            string
-	connected          bool
-	closed             bool
-	esphomeClient      *ESPHomeClient
-	eventChannel       chan VoiceAssistantEvent
-	audioChannel       chan AudioEvent
-	mediaPlayerChannel chan MediaPlayerEvent
-	commandChannel     chan Command
-	stopChannel        chan struct{}
+	mu                   sync.Mutex
+	address              string
+	connected            bool
+	closed               bool
+	esphomeClient        *ESPHomeClient
+	eventChannel         chan VoiceAssistantEvent
+	audioChannel         chan AudioEvent
+	mediaPlayerChannel   chan MediaPlayerEvent
+	commandChannel       chan Command
+	stopChannel          chan struct{}
+	binarySensorEntities map[uint32]string
+	mediaPlayerKey       uint32
+	buttonLastState      map[uint32]bool
 }
 
 func NewClient(address string) *Client {
 	return &Client{
-		address:            address,
-		eventChannel:       make(chan VoiceAssistantEvent, 10),
-		audioChannel:       make(chan AudioEvent, 100),
-		mediaPlayerChannel: make(chan MediaPlayerEvent, 10),
-		commandChannel:     make(chan Command, 10),
-		stopChannel:        make(chan struct{}),
+		address:              address,
+		eventChannel:         make(chan VoiceAssistantEvent, 10),
+		audioChannel:         make(chan AudioEvent, 100),
+		mediaPlayerChannel:   make(chan MediaPlayerEvent, 10),
+		commandChannel:       make(chan Command, 10),
+		stopChannel:          make(chan struct{}),
+		binarySensorEntities: make(map[uint32]string),
+		buttonLastState:      make(map[uint32]bool),
 	}
 }
 
@@ -112,6 +117,11 @@ func (c *Client) Connect(ctx context.Context) error {
 
 	// Login is deprecated in ESPHome 2026.1.0+ (password authentication no longer supported)
 	// Skip login - ESPHome now uses noise encryption instead
+
+	if err := esphomeClient.ListEntities(); err != nil {
+		esphomeClient.Close()
+		return err
+	}
 
 	if err := esphomeClient.SubscribeStates(); err != nil {
 		esphomeClient.Close()
@@ -153,6 +163,10 @@ func (c *Client) handleMessage(msg proto.Message) {
 		c.handleVoiceAssistantEvent(m)
 	case *api.VoiceAssistantAudio:
 		c.handleVoiceAssistantAudio(m)
+	case *api.ListEntitiesBinarySensorResponse:
+		c.handleListEntitiesBinarySensor(m)
+	case *api.ListEntitiesMediaPlayerResponse:
+		c.handleListEntitiesMediaPlayer(m)
 	case *api.BinarySensorStateResponse:
 		c.handleBinarySensorState(m)
 	case *api.LightStateResponse:
@@ -213,6 +227,46 @@ func (c *Client) handleVoiceAssistantAudio(audio *api.VoiceAssistantAudio) {
 
 func (c *Client) handleBinarySensorState(state *api.BinarySensorStateResponse) {
 	slog.Debug("binary sensor state", "key", state.Key, "state", state.State, "missing", state.MissingState)
+
+	lastState, hadLastState := c.buttonLastState[state.Key]
+	if hadLastState && lastState && !state.State {
+		entityName := c.binarySensorEntities[state.Key]
+		slog.Info("button released", "key", state.Key, "name", entityName)
+
+		c.mu.Lock()
+		mediaPlayerKey := c.mediaPlayerKey
+		c.mu.Unlock()
+
+		if mediaPlayerKey == 0 {
+			slog.Warn("media player key not known, cannot send volume command")
+			return
+		}
+
+		commandType := CommandVolumeUp
+		if entityName != "" && containsLower(entityName, "left") {
+			commandType = CommandVolumeDown
+		}
+
+		select {
+		case c.commandChannel <- Command{Type: commandType, Payload: MediaPlayerCommandPayload{Key: mediaPlayerKey}}:
+		default:
+			slog.Warn("command channel full, dropping command")
+		}
+	}
+
+	c.buttonLastState[state.Key] = state.State
+}
+
+func (c *Client) handleListEntitiesBinarySensor(resp *api.ListEntitiesBinarySensorResponse) {
+	slog.Debug("listed binary sensor entity", "key", resp.Key, "name", resp.Name)
+	c.binarySensorEntities[resp.Key] = resp.Name
+}
+
+func (c *Client) handleListEntitiesMediaPlayer(resp *api.ListEntitiesMediaPlayerResponse) {
+	slog.Debug("listed media player entity", "key", resp.Key, "name", resp.Name)
+	c.mu.Lock()
+	c.mediaPlayerKey = resp.Key
+	c.mu.Unlock()
 }
 
 func (c *Client) handleLightState(state *api.LightStateResponse) {
@@ -362,6 +416,26 @@ func (c *Client) processCommand(cmd Command) {
 		c.sendTTSEvent(false, payload)
 	case CommandVoiceAssistantEnd:
 		c.sendVoiceAssistantEnd()
+	case CommandVolumeUp:
+		c.sendMediaPlayerCommand(cmd.Payload, api.MediaPlayerCommand(6))
+	case CommandVolumeDown:
+		c.sendMediaPlayerCommand(cmd.Payload, api.MediaPlayerCommand(7))
+	}
+}
+
+func (c *Client) sendMediaPlayerCommand(payload interface{}, command api.MediaPlayerCommand) {
+	var mpPayload MediaPlayerCommandPayload
+	if p, ok := payload.(MediaPlayerCommandPayload); ok {
+		mpPayload = p
+	}
+
+	if mpPayload.Key == 0 {
+		slog.Warn("media player key is 0, cannot send command")
+		return
+	}
+
+	if err := c.esphomeClient.SendMediaPlayerCommand(mpPayload.Key, command); err != nil {
+		slog.Error("failed to send media player command", "error", err)
 	}
 }
 

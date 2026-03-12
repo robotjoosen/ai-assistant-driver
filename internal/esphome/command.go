@@ -1,5 +1,7 @@
 package esphome
 
+import "strings"
+
 type CommandType int
 
 const (
@@ -10,6 +12,8 @@ const (
 	CommandTTSStart
 	CommandTTSEnd
 	CommandVoiceAssistantEnd
+	CommandVolumeUp
+	CommandVolumeDown
 )
 
 type Command struct {
@@ -24,4 +28,12 @@ type TTSEndPayload struct {
 
 type STTEndPayload struct {
 	Text string
+}
+
+type MediaPlayerCommandPayload struct {
+	Key uint32
+}
+
+func containsLower(s, substr string) bool {
+	return strings.Contains(strings.ToLower(s), substr)
 }

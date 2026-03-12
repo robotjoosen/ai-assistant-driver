@@ -33,11 +33,14 @@ const (
 	msgSubscribeStatesRequest = 20
 	msgSubscribeLogsRequest   = 28
 
-	msgBinarySensorStateResponse = 21
-	msgLightStateResponse        = 24
-	msgSwitchStateResponse       = 26
-	msgSelectStateResponse       = 53
-	msgMediaPlayerStateResponse  = 64
+	msgBinarySensorStateResponse        = 21
+	msgListEntitiesBinarySensorResponse = 12
+	msgLightStateResponse               = 24
+	msgSwitchStateResponse              = 26
+	msgSelectStateResponse              = 53
+	msgListEntitiesMediaPlayerResponse  = 63
+	msgMediaPlayerStateResponse         = 64
+	msgMediaPlayerCommandRequest        = 65
 
 	msgSubscribeVoiceAssistant = 89
 	msgVoiceAssistantRequest   = 90
@@ -221,6 +224,8 @@ func getMessageForTypeID(typeID uint64) proto.Message {
 		return &api.SubscribeStatesRequest{}
 	case msgSubscribeLogsRequest:
 		return &api.SubscribeLogsRequest{}
+	case msgListEntitiesBinarySensorResponse:
+		return &api.ListEntitiesBinarySensorResponse{}
 	case msgBinarySensorStateResponse:
 		return &api.BinarySensorStateResponse{}
 	case msgLightStateResponse:
@@ -229,8 +234,12 @@ func getMessageForTypeID(typeID uint64) proto.Message {
 		return &api.SwitchStateResponse{}
 	case msgSelectStateResponse:
 		return &api.SelectStateResponse{}
+	case msgListEntitiesMediaPlayerResponse:
+		return &api.ListEntitiesMediaPlayerResponse{}
 	case msgMediaPlayerStateResponse:
 		return &api.MediaPlayerStateResponse{}
+	case msgMediaPlayerCommandRequest:
+		return &api.MediaPlayerCommandRequest{}
 	case msgSubscribeVoiceAssistant:
 		return &api.SubscribeVoiceAssistantRequest{}
 	case msgVoiceAssistantRequest:
@@ -289,6 +298,18 @@ func (c *ESPHomeClient) SubscribeStates() error {
 	}
 
 	slog.Debug("SubscribeStates sent")
+	return nil
+}
+
+func (c *ESPHomeClient) ListEntities() error {
+	slog.Debug("→ ListEntities")
+
+	if err := c.apiConn.Write(&api.ListEntitiesRequest{}); err != nil {
+		slog.Error("ListEntities failed", "error", err)
+		return err
+	}
+
+	slog.Debug("ListEntities sent")
 	return nil
 }
 
@@ -387,6 +408,24 @@ func (c *ESPHomeClient) sendWithTypeID(msgTypeID uint64, msg proto.Message) erro
 
 func (c *ESPHomeClient) SendMessage(msgTypeID uint64, msg proto.Message) error {
 	return c.sendWithTypeID(msgTypeID, msg)
+}
+
+func (c *ESPHomeClient) SendMediaPlayerCommand(key uint32, command api.MediaPlayerCommand) error {
+	slog.Debug("→ MediaPlayerCommand", "key", key, "command", command)
+
+	msg := &api.MediaPlayerCommandRequest{
+		Key:        key,
+		HasCommand: true,
+		Command:    command,
+	}
+
+	if err := c.SendMessage(msgMediaPlayerCommandRequest, msg); err != nil {
+		slog.Error("failed to send MediaPlayerCommand", "error", err)
+		return err
+	}
+
+	slog.Debug("MediaPlayerCommand sent", "key", key, "command", command)
+	return nil
 }
 
 func (c *ESPHomeClient) sendWithApiConn(msg proto.Message) error {
