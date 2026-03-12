@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"time"
 )
@@ -16,7 +16,7 @@ type Client struct {
 func NewClient(host string, port int) (*Client, error) {
 	address := net.JoinHostPort(host, fmt.Sprintf("%d", port))
 
-	log.Printf("[WYOMING] Connecting to %s", address)
+	slog.Debug("connecting to Wyoming service", "address", address)
 
 	conn, err := net.DialTimeout("tcp", address, 10*time.Second)
 	if err != nil {
@@ -28,7 +28,7 @@ func NewClient(host string, port int) (*Client, error) {
 		tcpConn.SetKeepAlivePeriod(30 * time.Second)
 	}
 
-	log.Printf("[WYOMING] Connected successfully")
+	slog.Debug("connected to Wyoming service")
 
 	return &Client{
 		conn: conn,
@@ -58,9 +58,8 @@ func (c *Client) WriteEvent(event *Event, payload []byte) error {
 	payloadLen := len(payload)
 	dataLen := len(eventData)
 
-	log.Printf("[WYOMING] Writing event: type=%s, data_len=%d, payload_len=%d",
-		event.Type, dataLen, payloadLen)
-	log.Printf("[WYOMING] Event data JSON: %s", string(eventData))
+	slog.Debug("writing event", "type", event.Type, "data_len", dataLen, "payload_len", payloadLen)
+	slog.Debug("event data JSON", "json", string(eventData))
 
 	jsonEvt := jsonEvent{
 		Type:          string(event.Type),
@@ -73,7 +72,7 @@ func (c *Client) WriteEvent(event *Event, payload []byte) error {
 		return fmt.Errorf("failed to marshal json event: %w", err)
 	}
 
-	log.Printf("[WYOMING] JSON line: %s", string(jsonLine))
+	slog.Debug("JSON line", "json", string(jsonLine))
 
 	c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 
@@ -86,14 +85,14 @@ func (c *Client) WriteEvent(event *Event, payload []byte) error {
 	}
 
 	if dataLen > 0 {
-		log.Printf("[WYOMING] Writing %d bytes of event data", dataLen)
+		slog.Debug("writing event data", "bytes", dataLen)
 		if _, err := c.conn.Write(eventData); err != nil {
 			return fmt.Errorf("failed to write event data: %w", err)
 		}
 	}
 
 	if payloadLen > 0 {
-		log.Printf("[WYOMING] Writing %d bytes of payload", payloadLen)
+		slog.Debug("writing payload", "bytes", payloadLen)
 		if _, err := c.conn.Write(payload); err != nil {
 			return fmt.Errorf("failed to write payload: %w", err)
 		}
@@ -101,13 +100,13 @@ func (c *Client) WriteEvent(event *Event, payload []byte) error {
 
 	c.conn.SetReadDeadline(time.Time{})
 
-	log.Printf("[WYOMING] Event written successfully: type=%s", event.Type)
+	slog.Debug("event written successfully", "type", event.Type)
 
 	return nil
 }
 
 func (c *Client) ReadEvent() (*Event, []byte, error) {
-	log.Printf("[WYOMING] Waiting for event...")
+	slog.Debug("waiting for event")
 
 	line, err := readLine(c.conn)
 	if err != nil {
@@ -119,8 +118,7 @@ func (c *Client) ReadEvent() (*Event, []byte, error) {
 		return nil, nil, fmt.Errorf("failed to parse json event: %w", err)
 	}
 
-	log.Printf("[WYOMING] Header received: type=%s, data_len=%d, payload_len=%d",
-		jsonEvt.Type, jsonEvt.DataLength, jsonEvt.PayloadLength)
+	slog.Debug("header received", "type", jsonEvt.Type, "data_len", jsonEvt.DataLength, "payload_len", jsonEvt.PayloadLength)
 
 	event := &Event{
 		Type: EventType(jsonEvt.Type),
@@ -131,7 +129,7 @@ func (c *Client) ReadEvent() (*Event, []byte, error) {
 		if _, err := io.ReadFull(c.conn, dataBytes); err != nil {
 			return nil, nil, fmt.Errorf("failed to read event data: %w", err)
 		}
-		log.Printf("[WYOMING] Read %d bytes of event data: %s", jsonEvt.DataLength, string(dataBytes))
+		slog.Debug("read event data", "bytes", jsonEvt.DataLength, "data", string(dataBytes))
 		if err := json.Unmarshal(dataBytes, &event.Data); err != nil {
 			return nil, nil, fmt.Errorf("failed to parse event data: %w", err)
 		}
@@ -145,15 +143,15 @@ func (c *Client) ReadEvent() (*Event, []byte, error) {
 		}
 	}
 
-	log.Printf("[WYOMING] Event received: type=%s", event.Type)
+	slog.Debug("event received", "type", event.Type)
 
 	return event, payload, nil
 }
 
 func (c *Client) ReadEventWithTimeout(timeout time.Duration) (*Event, []byte, error) {
-	log.Printf("[WYOMING] Setting read deadline: %v", timeout)
+	slog.Debug("setting read deadline", "timeout", timeout)
 	c.conn.SetReadDeadline(time.Now().Add(timeout))
-	log.Printf("[WYOMING] Read deadline set, calling ReadEvent...")
+	slog.Debug("read deadline set, calling ReadEvent")
 	return c.ReadEvent()
 }
 

@@ -212,23 +212,23 @@ func (c *Client) handleVoiceAssistantAudio(audio *api.VoiceAssistantAudio) {
 }
 
 func (c *Client) handleBinarySensorState(state *api.BinarySensorStateResponse) {
-	slog.Info("binary sensor state", "key", state.Key, "state", state.State, "missing", state.MissingState)
+	slog.Debug("binary sensor state", "key", state.Key, "state", state.State, "missing", state.MissingState)
 }
 
 func (c *Client) handleLightState(state *api.LightStateResponse) {
-	slog.Info("light state", "key", state.Key, "state", state.State, "brightness", state.Brightness, "effect", state.Effect)
+	slog.Debug("light state", "key", state.Key, "state", state.State, "brightness", state.Brightness, "effect", state.Effect)
 }
 
 func (c *Client) handleSwitchState(state *api.SwitchStateResponse) {
-	slog.Info("switch state", "key", state.Key, "state", state.State)
+	slog.Debug("switch state", "key", state.Key, "state", state.State)
 }
 
 func (c *Client) handleSelectState(state *api.SelectStateResponse) {
-	slog.Info("select state", "key", state.Key, "state", state.State, "missing", state.MissingState)
+	slog.Debug("select state", "key", state.Key, "state", state.State, "missing", state.MissingState)
 }
 
 func (c *Client) handleMediaPlayerState(state *api.MediaPlayerStateResponse) {
-	slog.Info("media player state", "key", state.Key, "state", state.State, "volume", state.Volume, "muted", state.Muted)
+	slog.Debug("media player state", "key", state.Key, "state", state.State, "volume", state.Volume, "muted", state.Muted)
 
 	select {
 	case c.mediaPlayerChannel <- MediaPlayerEvent{

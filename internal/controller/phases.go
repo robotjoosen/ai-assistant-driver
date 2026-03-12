@@ -47,14 +47,14 @@ func (c *Controller) handleAudioEvent(audio esphome.AudioEvent) {
 	}
 
 	if transcriber.SilenceDetected() && c.phase == PhaseListening {
-		slog.Info("VAD detected end of speech")
+		slog.Debug("VAD detected end of speech")
 		c.commands <- esphome.Command{Type: esphome.CommandVADEnd}
 		c.handleListeningEnd()
 		return
 	}
 
 	if audio.End {
-		slog.Info("audio stream ended")
+		slog.Debug("audio stream ended")
 	}
 }
 

@@ -126,7 +126,7 @@ func (t *WyomingTranscriber) SendAudio(audioData []byte) error {
 	if t.vadDetector != nil {
 		_, silenceEnded := t.vadDetector.ProcessAudio(audioData)
 		if silenceEnded {
-			slog.Info("VAD detected end of speech")
+			slog.Debug("VAD detected end of speech")
 		}
 	}
 
