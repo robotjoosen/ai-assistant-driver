@@ -35,7 +35,7 @@ func connectToESPHome(shutdownCtx context.Context, address string) (*esphome.Cli
 
 	client := esphome.NewClient(address)
 
-	if err := client.Connect(shutdownCtx); err != nil {
+	if err := client.ConnectWithRetry(shutdownCtx); err != nil {
 		return nil, fmt.Errorf("failed to connect to ESPHome device: %w", err)
 	}
 
@@ -43,6 +43,8 @@ func connectToESPHome(shutdownCtx context.Context, address string) (*esphome.Cli
 		client.Close()
 		return nil, fmt.Errorf("failed to subscribe to voice assistant: %w", err)
 	}
+
+	client.StartReconnectionHandler(shutdownCtx)
 
 	slog.Info("connected to ESPHome device", "address", address)
 

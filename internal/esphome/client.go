@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/mycontroller-org/esphome_api/pkg/api"
 	"google.golang.org/protobuf/proto"
@@ -13,6 +14,20 @@ import (
 var (
 	ErrNotConnected = errors.New("not connected to ESPHome device")
 )
+
+type ReconnectConfig struct {
+	InitialDelay time.Duration
+	MaxDelay     time.Duration
+	Multiplier   float64
+}
+
+func DefaultReconnectConfig() ReconnectConfig {
+	return ReconnectConfig{
+		InitialDelay: 1 * time.Second,
+		MaxDelay:     30 * time.Second,
+		Multiplier:   2.0,
+	}
+}
 
 type VoiceAssistantPhase int
 
@@ -78,9 +93,19 @@ type Client struct {
 	binarySensorEntities map[uint32]string
 	mediaPlayerKey       uint32
 	buttonLastState      map[uint32]bool
+	reconnectConfig      ReconnectConfig
+	ctx                  context.Context
+	cancel               context.CancelFunc
 }
 
-func NewClient(address string) *Client {
+func NewClient(address string, reconnectConfig ...ReconnectConfig) *Client {
+	cfg := DefaultReconnectConfig()
+	if len(reconnectConfig) > 0 {
+		cfg = reconnectConfig[0]
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
 	return &Client{
 		address:              address,
 		eventChannel:         make(chan VoiceAssistantEvent, 10),
@@ -90,6 +115,9 @@ func NewClient(address string) *Client {
 		stopChannel:          make(chan struct{}),
 		binarySensorEntities: make(map[uint32]string),
 		buttonLastState:      make(map[uint32]bool),
+		reconnectConfig:      cfg,
+		ctx:                  ctx,
+		cancel:               cancel,
 	}
 }
 
@@ -136,6 +164,70 @@ func (c *Client) Connect(ctx context.Context) error {
 	go c.handleCommands()
 
 	return nil
+}
+
+func (c *Client) ConnectWithRetry(ctx context.Context) error {
+	delay := c.reconnectConfig.InitialDelay
+
+	for {
+		select {
+		case <-ctx.Done():
+			slog.Info("connection cancelled")
+			return ctx.Err()
+		default:
+		}
+
+		err := c.Connect(ctx)
+		if err == nil {
+			slog.Info("connected to ESPHome device", "address", c.address)
+			return nil
+		}
+
+		slog.Warn("failed to connect to ESPHome device, retrying",
+			"address", c.address,
+			"error", err,
+			"next_retry", delay)
+
+		select {
+		case <-ctx.Done():
+			slog.Info("connection cancelled during retry wait")
+			return ctx.Err()
+		case <-time.After(delay):
+		}
+
+		delay = time.Duration(float64(delay) * c.reconnectConfig.Multiplier)
+		if delay > c.reconnectConfig.MaxDelay {
+			delay = c.reconnectConfig.MaxDelay
+		}
+	}
+}
+
+func (c *Client) StartReconnectionHandler(ctx context.Context) {
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-c.esphomeClient.ConnectionLost():
+				slog.Warn("connection lost, attempting to reconnect")
+				c.mu.Lock()
+				c.connected = false
+				c.esphomeClient = nil
+				c.mu.Unlock()
+
+				if err := c.ConnectWithRetry(ctx); err != nil {
+					slog.Error("reconnection failed", "error", err)
+					return
+				}
+
+				slog.Info("successfully reconnected, re-subscribing to voice assistant")
+				if err := c.SubscribeVoiceAssistant(ctx); err != nil {
+					slog.Error("failed to re-subscribe to voice assistant", "error", err)
+					return
+				}
+			}
+		}
+	}()
 }
 
 func (c *Client) handleMessages() {

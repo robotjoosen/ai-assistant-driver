@@ -55,15 +55,16 @@ type pendingRequest struct {
 }
 
 type ESPHomeClient struct {
-	mu       sync.Mutex
-	address  string
-	clientID string
-	closed   bool
-	wg       sync.WaitGroup
-	msgChan  chan proto.Message
-	stopChan chan struct{}
-	conn     net.Conn
-	apiConn  connection.ApiConnection
+	mu           sync.Mutex
+	address      string
+	clientID     string
+	closed       bool
+	wg           sync.WaitGroup
+	msgChan      chan proto.Message
+	stopChan     chan struct{}
+	disconnected chan struct{}
+	conn         net.Conn
+	apiConn      connection.ApiConnection
 
 	pendingMu   sync.Mutex
 	pendingReqs map[uint64]*pendingRequest
@@ -71,10 +72,11 @@ type ESPHomeClient struct {
 
 func NewESPHomeClient(address string) *ESPHomeClient {
 	return &ESPHomeClient{
-		address:     address,
-		msgChan:     make(chan proto.Message, 10),
-		stopChan:    make(chan struct{}),
-		pendingReqs: make(map[uint64]*pendingRequest),
+		address:      address,
+		msgChan:      make(chan proto.Message, 10),
+		stopChan:     make(chan struct{}),
+		disconnected: make(chan struct{}, 1),
+		pendingReqs:  make(map[uint64]*pendingRequest),
 	}
 }
 
@@ -127,9 +129,13 @@ func (c *ESPHomeClient) readLoop(reader *bufio.Reader) {
 			if err != nil {
 				if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 					slog.Info("connection closed")
-					return
+				} else {
+					slog.Error("read error", "error", err)
 				}
-				slog.Error("read error", "error", err)
+				select {
+				case c.disconnected <- struct{}{}:
+				default:
+				}
 				return
 			}
 			c.routeMessage(msg)
@@ -493,6 +499,14 @@ func (c *ESPHomeClient) StartVoiceAssistant() error {
 
 func (c *ESPHomeClient) Messages() <-chan proto.Message {
 	return c.msgChan
+}
+
+func (c *ESPHomeClient) Done() <-chan struct{} {
+	return c.stopChan
+}
+
+func (c *ESPHomeClient) ConnectionLost() <-chan struct{} {
+	return c.disconnected
 }
 
 func (c *ESPHomeClient) Close() error {
