@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
+	"github.com/robotjoosen/ai-assistant-driver/internal/llm"
 )
 
 const bufferSize = 10
@@ -34,7 +34,7 @@ type ConversationManager struct {
 	summary     string
 	totalCount  int64
 	storagePath string
-	aiClient    ai.Client
+	aiClient    llm.Client
 }
 
 var SummarizationPromptTemplate = `Summarize this conversation concisely, preserving key information, preferences, and important details.
@@ -48,7 +48,7 @@ Recent conversation:
 
 Provide a concise summary:`
 
-func NewConversationManager(storagePath string, aiClient ai.Client) (*ConversationManager, error) {
+func NewConversationManager(storagePath string, aiClient llm.Client) (*ConversationManager, error) {
 	mgr := &ConversationManager{
 		buffer:      make([]Message, 0, bufferSize),
 		storagePath: storagePath,

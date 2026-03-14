@@ -8,15 +8,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
+	"github.com/robotjoosen/ai-assistant-driver/internal/llm"
 )
 
-type mockAIClient struct {
+type mockLLMClient struct {
 	response string
 	err      error
 }
 
-func (m *mockAIClient) Chat(ctx context.Context, prompt string, context string, tools []ai.Tool) (string, []ai.ToolCall, error) {
+func (m *mockLLMClient) Chat(ctx context.Context, prompt string, context string, tools []llm.Tool) (string, []llm.ToolCall, error) {
 	return m.response, nil, m.err
 }
 
@@ -226,7 +226,7 @@ func TestConversationManager_AtomicWrite(t *testing.T) {
 func TestConversationManager_SummarizationTrigger(t *testing.T) {
 	tempDir := t.TempDir()
 
-	mockClient := &mockAIClient{
+	mockClient := &mockLLMClient{
 		response: "This is a summary.",
 	}
 
@@ -249,7 +249,7 @@ func TestConversationManager_SummarizationTrigger(t *testing.T) {
 func TestConversationManager_SummarizationSkipOnError(t *testing.T) {
 	tempDir := t.TempDir()
 
-	mockClient := &mockAIClient{
+	mockClient := &mockLLMClient{
 		err: assertAnError(),
 	}
 

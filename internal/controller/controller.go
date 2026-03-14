@@ -4,9 +4,9 @@ import (
 	"context"
 	"log/slog"
 
-	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
 	"github.com/robotjoosen/ai-assistant-driver/internal/history"
+	"github.com/robotjoosen/ai-assistant-driver/internal/llm"
 	"github.com/robotjoosen/ai-assistant-driver/internal/stt"
 	"github.com/robotjoosen/ai-assistant-driver/internal/tts"
 )
@@ -43,11 +43,11 @@ type ErrorEvent struct {
 
 type Config struct {
 	STT            stt.Transcriber
-	AIClient       ai.Client
+	LLMClient      llm.Client
 	TTSSynthesizer tts.Synthesizer
 	TTSServer      *tts.Server
 	HistoryManager *history.ConversationManager
-	ToolExecutor   *ai.ToolExecutor
+	ToolExecutor   *llm.ToolExecutor
 	Conversational ConversationalConfig
 }
 

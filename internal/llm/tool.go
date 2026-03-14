@@ -1,4 +1,4 @@
-package ai
+package llm
 
 import "context"
 
@@ -19,4 +19,18 @@ type ToolResult struct {
 	CallID string
 	Result string
 	Error  error
+}
+
+var globalTools = []Tool{}
+
+func RegisterTool(t Tool) {
+	globalTools = append(globalTools, t)
+}
+
+func GetTools() []Tool {
+	return globalTools
+}
+
+func ClearTools() {
+	globalTools = nil
 }

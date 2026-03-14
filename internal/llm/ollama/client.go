@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/ollama/ollama/api"
-	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
+	"github.com/robotjoosen/ai-assistant-driver/internal/llm"
 )
 
 type Config struct {
@@ -24,7 +24,7 @@ type OllamaClient struct {
 	systemMessage string
 }
 
-func NewClient(cfg Config) ai.Client {
+func NewClient(cfg Config) llm.Client {
 	baseURL := &url.URL{
 		Scheme: "http",
 		Host:   fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
@@ -37,7 +37,7 @@ func NewClient(cfg Config) ai.Client {
 	}
 }
 
-func (c *OllamaClient) Chat(ctx context.Context, prompt string, conversationContext string, tools []ai.Tool) (string, []ai.ToolCall, error) {
+func (c *OllamaClient) Chat(ctx context.Context, prompt string, conversationContext string, tools []llm.Tool) (string, []llm.ToolCall, error) {
 	messages := []api.Message{}
 
 	if c.systemMessage != "" {
@@ -69,7 +69,7 @@ func (c *OllamaClient) Chat(ctx context.Context, prompt string, conversationCont
 	}
 
 	var responseText string
-	var toolCalls []ai.ToolCall
+	var toolCalls []llm.ToolCall
 
 	err := c.client.Chat(ctx, req, func(resp api.ChatResponse) error {
 		responseText = resp.Message.Content
@@ -81,7 +81,7 @@ func (c *OllamaClient) Chat(ctx context.Context, prompt string, conversationCont
 					argsMap[k] = v
 				}
 
-				toolCalls = append(toolCalls, ai.ToolCall{
+				toolCalls = append(toolCalls, llm.ToolCall{
 					ID:        tc.ID,
 					Name:      tc.Function.Name,
 					Arguments: argsMap,
@@ -102,7 +102,7 @@ func (c *OllamaClient) Chat(ctx context.Context, prompt string, conversationCont
 	return responseText, toolCalls, nil
 }
 
-func (c *OllamaClient) convertTools(tools []ai.Tool) api.Tools {
+func (c *OllamaClient) convertTools(tools []llm.Tool) api.Tools {
 	if len(tools) == 0 {
 		return nil
 	}

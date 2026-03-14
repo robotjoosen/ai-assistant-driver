@@ -5,21 +5,21 @@ import (
 	"fmt"
 	"log/slog"
 
-	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
 	"github.com/robotjoosen/ai-assistant-driver/internal/history"
+	"github.com/robotjoosen/ai-assistant-driver/internal/llm"
 )
 
 const ErrorResponse = "Sorry, I couldn't process that request."
 
 type ThinkingPhase struct {
-	aiClient       ai.Client
+	llmClient      llm.Client
 	historyManager *history.ConversationManager
-	toolExecutor   *ai.ToolExecutor
+	toolExecutor   *llm.ToolExecutor
 }
 
-func NewThinkingPhase(aiClient ai.Client, historyManager *history.ConversationManager, toolExecutor *ai.ToolExecutor) *ThinkingPhase {
+func NewThinkingPhase(llmClient llm.Client, historyManager *history.ConversationManager, toolExecutor *llm.ToolExecutor) *ThinkingPhase {
 	return &ThinkingPhase{
-		aiClient:       aiClient,
+		llmClient:      llmClient,
 		historyManager: historyManager,
 		toolExecutor:   toolExecutor,
 	}
@@ -33,7 +33,7 @@ func (p *ThinkingPhase) Run(ctx context.Context, transcript string) string {
 
 	tools := p.toolExecutor.GetTools()
 
-	response, toolCalls, err := p.aiClient.Chat(ctx, transcript, conversationContext, tools)
+	response, toolCalls, err := p.llmClient.Chat(ctx, transcript, conversationContext, tools)
 	if err != nil {
 		slog.Error("failed to get LLM response", "error", err)
 		return ErrorResponse
@@ -50,7 +50,7 @@ func (p *ThinkingPhase) Run(ctx context.Context, transcript string) string {
 
 		conversationContext = p.buildConversationContextWithToolResults(conversationContext, toolCalls, results)
 
-		response, toolCalls, err = p.aiClient.Chat(ctx, "", conversationContext, tools)
+		response, toolCalls, err = p.llmClient.Chat(ctx, "", conversationContext, tools)
 		if err != nil {
 			slog.Error("failed to get LLM response after tool execution", "error", err)
 			return ErrorResponse
@@ -66,8 +66,8 @@ func (p *ThinkingPhase) Run(ctx context.Context, transcript string) string {
 
 func (p *ThinkingPhase) buildConversationContextWithToolResults(
 	conversationContext string,
-	calls []ai.ToolCall,
-	results []ai.ToolResult,
+	calls []llm.ToolCall,
+	results []llm.ToolResult,
 ) string {
 	var contextWithResults string
 

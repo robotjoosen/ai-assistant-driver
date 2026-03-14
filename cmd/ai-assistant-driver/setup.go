@@ -6,13 +6,15 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
-	"github.com/robotjoosen/ai-assistant-driver/internal/ai/ollama"
-	"github.com/robotjoosen/ai-assistant-driver/internal/ai/tools"
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
 	"github.com/robotjoosen/ai-assistant-driver/internal/history"
+	"github.com/robotjoosen/ai-assistant-driver/internal/llm"
+	"github.com/robotjoosen/ai-assistant-driver/internal/llm/ollama"
 	"github.com/robotjoosen/ai-assistant-driver/internal/stt"
+	"github.com/robotjoosen/ai-assistant-driver/internal/tools/openwrt"
+	"github.com/robotjoosen/ai-assistant-driver/internal/tools/speedtest"
+	"github.com/robotjoosen/ai-assistant-driver/internal/tools/weather"
 	"github.com/robotjoosen/ai-assistant-driver/internal/tts"
 )
 
@@ -68,16 +70,16 @@ func newSTTTranscriber(ctx context.Context, cfg *config.Config) (stt.Transcriber
 	return sttClient, nil
 }
 
-func newAIClient(cfg *config.Config) (ai.Client, error) {
+func newLLMClient(cfg *config.Config) (llm.Client, error) {
 	ollamaConfig := ollama.Config{
-		Host:          cfg.AI.Host,
-		Port:          cfg.AI.Port,
-		Model:         cfg.AI.Model,
-		SystemMessage: cfg.AI.SystemMessage,
+		Host:          cfg.LLM.Host,
+		Port:          cfg.LLM.Port,
+		Model:         cfg.LLM.Model,
+		SystemMessage: cfg.LLM.SystemMessage,
 	}
 
 	client := ollama.NewClient(ollamaConfig)
-	slog.Info("AI client initialized", "host", cfg.AI.Host, "port", cfg.AI.Port, "model", cfg.AI.Model)
+	slog.Info("LLM client initialized", "host", cfg.LLM.Host, "port", cfg.LLM.Port, "model", cfg.LLM.Model)
 
 	return client, nil
 }
@@ -99,8 +101,8 @@ func newTTSSynthesizer(ctx context.Context, cfg *config.Config) (tts.Synthesizer
 	return synthesizer, server, nil
 }
 
-func newHistoryManager(cfg *config.Config, aiClient ai.Client) (*history.ConversationManager, error) {
-	manager, err := history.NewConversationManager(cfg.Conversational.HistoryStoragePath, aiClient)
+func newHistoryManager(cfg *config.Config, llmClient llm.Client) (*history.ConversationManager, error) {
+	manager, err := history.NewConversationManager(cfg.Conversational.HistoryStoragePath, llmClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize history manager: %w", err)
 	}
@@ -110,10 +112,27 @@ func newHistoryManager(cfg *config.Config, aiClient ai.Client) (*history.Convers
 	return manager, nil
 }
 
-func newToolExecutor() *ai.ToolExecutor {
-	executor := ai.NewToolExecutor()
+func newToolExecutor(cfg *config.Config) *llm.ToolExecutor {
+	executor := llm.NewToolExecutor()
 
-	registeredTools := tools.All()
+	openwrtClient := openwrt.NewClient(
+		cfg.OpenWrt.Host,
+		cfg.OpenWrt.Port,
+		cfg.OpenWrt.Username,
+		cfg.OpenWrt.Password,
+	)
+	openwrt.Register(openwrtClient)
+
+	weatherClient := weather.NewClient(
+		cfg.Weather.Latitude,
+		cfg.Weather.Longitude,
+	)
+	weather.Register(weatherClient)
+
+	speedtestClient := speedtest.NewClient()
+	speedtest.Register(speedtestClient)
+
+	registeredTools := llm.GetTools()
 	if len(registeredTools) > 0 {
 		executor.Register(registeredTools...)
 		slog.Info("tool executor initialized", "tool_count", len(registeredTools))

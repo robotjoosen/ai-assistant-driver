@@ -11,7 +11,7 @@ import (
 
 var (
 	ErrESPHomeAddressRequired = errors.New("ESP_HOME_ADDRESS is required")
-	ErrAIModelRequired        = errors.New("AI_MODEL is required")
+	ErrLLMModelRequired       = errors.New("LLM_MODEL is required")
 )
 
 type Config struct {
@@ -19,7 +19,9 @@ type Config struct {
 	LogLevel       string `env:"LOG_LEVEL"`
 	Conversational ConversationalConfig
 	VAD            VadConfig
-	AI             AIConfig
+	LLM            LLMConfig
+	OpenWrt        OpenWrtConfig
+	Weather        WeatherConfig
 }
 
 type ConversationalConfig struct {
@@ -42,11 +44,23 @@ type VadConfig struct {
 	MinSilenceMs   int     `env:"VAD_MIN_SILENCE_MS"`
 }
 
-type AIConfig struct {
-	Host          string `env:"AI_HOST"`
-	Port          int    `env:"AI_PORT"`
-	Model         string `env:"AI_MODEL"`
-	SystemMessage string `env:"AI_SYSTEM_MESSAGE"`
+type LLMConfig struct {
+	Host          string `env:"LLM_HOST"`
+	Port          int    `env:"LLM_PORT"`
+	Model         string `env:"LLM_MODEL"`
+	SystemMessage string `env:"LLM_SYSTEM_MESSAGE"`
+}
+
+type OpenWrtConfig struct {
+	Host     string `env:"OPENWRT_HOST"`
+	Port     int    `env:"OPENWRT_PORT"`
+	Username string `env:"OPENWRT_USERNAME"`
+	Password string `env:"OPENWRT_PASSWORD"`
+}
+
+type WeatherConfig struct {
+	Latitude  float64 `env:"WEATHER_LATITUDE"`
+	Longitude float64 `env:"WEATHER_LONGITUDE"`
 }
 
 func Load() (*Config, error) {
@@ -74,9 +88,18 @@ func Load() (*Config, error) {
 			ThresholdRatio: 2.5,
 			MinSilenceMs:   1000,
 		},
-		AI: AIConfig{
+		LLM: LLMConfig{
 			Host: "localhost",
 			Port: 11434,
+		},
+		OpenWrt: OpenWrtConfig{
+			Port:     80,
+			Username: "root",
+			Password: "password",
+		},
+		Weather: WeatherConfig{
+			Latitude:  0,
+			Longitude: 0,
 		},
 	}
 
@@ -88,8 +111,8 @@ func Load() (*Config, error) {
 		return nil, ErrESPHomeAddressRequired
 	}
 
-	if cfg.AI.Model == "" {
-		return nil, ErrAIModelRequired
+	if cfg.LLM.Model == "" {
+		return nil, ErrLLMModelRequired
 	}
 
 	return cfg, nil

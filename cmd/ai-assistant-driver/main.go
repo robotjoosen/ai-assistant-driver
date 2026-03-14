@@ -36,7 +36,7 @@ func main() {
 	}
 	shutdownMgr.Add(func() { sttClient.Close() })
 
-	aiClient, err := newAIClient(cfg)
+	llmClient, err := newLLMClient(cfg)
 	if err != nil {
 		slog.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()
@@ -53,7 +53,7 @@ func main() {
 	}
 	shutdownMgr.Add(func() { ttsServer.Close() })
 
-	historyManager, err := newHistoryManager(cfg, aiClient)
+	historyManager, err := newHistoryManager(cfg, llmClient)
 	if err != nil {
 		slog.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()
@@ -61,12 +61,12 @@ func main() {
 		return
 	}
 
-	toolExecutor := newToolExecutor()
+	toolExecutor := newToolExecutor(cfg)
 
 	ctrl := controller.New(
 		controller.Config{
 			STT:            sttClient,
-			AIClient:       aiClient,
+			LLMClient:      llmClient,
 			TTSSynthesizer: ttsSynthesizer,
 			TTSServer:      ttsServer,
 			HistoryManager: historyManager,
