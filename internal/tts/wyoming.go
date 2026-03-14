@@ -18,8 +18,8 @@ type WyomingSynthesizer struct {
 	closed    bool
 }
 
-func NewSynthesizer(cfg config.WyomingConfig) (Synthesizer, error) {
-	host := cfg.PiperHost
+func NewSynthesizer(cfg config.ConversationalConfig) (Synthesizer, error) {
+	host := cfg.SynthesizerHost
 	if host == "" {
 		host = cfg.Host
 		if host == "" {
@@ -27,12 +27,12 @@ func NewSynthesizer(cfg config.WyomingConfig) (Synthesizer, error) {
 		}
 	}
 
-	port := cfg.PiperPort
+	port := cfg.SynthesizerPort
 	if port == 0 {
 		port = 10200
 	}
 
-	language := cfg.PiperLanguage
+	language := cfg.SynthesizerLanguage
 	if language == "" {
 		language = cfg.Language
 		if language == "" {

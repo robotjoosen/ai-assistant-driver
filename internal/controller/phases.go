@@ -9,7 +9,7 @@ import (
 )
 
 const (
-	maxWhisperRetries = 3
+	maxSTTRetries = 3
 )
 
 func (c *Controller) handleVoiceAssistantEvent(event esphome.VoiceAssistantEvent) {
@@ -34,7 +34,7 @@ func (c *Controller) handleAudioEvent(audio esphome.AudioEvent) {
 		return
 	}
 
-	transcriber := c.config.Transcriber
+	transcriber := c.config.STT
 
 	if err := transcriber.SendAudio(audio.Data); err != nil {
 		slog.Error("failed to send audio to transcriber", "error", err)
@@ -63,7 +63,7 @@ func (c *Controller) handleListeningStart() {
 		return
 	}
 
-	transcriber := c.config.Transcriber
+	transcriber := c.config.STT
 	transcriber.Reset()
 	transcriber.ResetVAD()
 
@@ -88,7 +88,7 @@ func (c *Controller) handleListeningEnd() {
 		return
 	}
 
-	transcriber := c.config.Transcriber
+	transcriber := c.config.STT
 
 	if err := transcriber.SendAudioStop(); err != nil {
 		slog.Error("failed to send audio-stop", "error", err)
@@ -173,7 +173,7 @@ func (c *Controller) handleReplyStart() {
 	c.phase = PhaseReply
 	slog.Info("reply phase started")
 
-	replyPhase := phases.NewReplyPhase(c.config.TTSSynthesizer, c.config.TTSServer, c.commands)
+	replyPhase := phases.NewReplyPhase(c.config.TTSSynthesizer, c.config.TTSServer, c.commands, c.config.Conversational.StoragePath)
 	cleanup, err := replyPhase.Run(context.Background(), c.llmResponse)
 	if err != nil {
 		slog.Error("reply phase failed", "error", err)
@@ -203,8 +203,8 @@ func (c *Controller) handleIdleOrError() {
 
 	slog.Info("transitioning to idle", "previous_phase", c.phase.String())
 
-	if c.config.Transcriber.IsConnected() {
-		c.config.Transcriber.Close()
+	if c.config.STT.IsConnected() {
+		c.config.STT.Close()
 	}
 
 	c.phase = PhaseIdle

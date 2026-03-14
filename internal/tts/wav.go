@@ -157,18 +157,17 @@ func createWAVHeader(dataSize int, sampleRate, bitsPerSample, channels int) []by
 	return buf
 }
 
-func SaveWAVFile(pcmData []byte, sampleRate, bitDepth, channels int) (string, error) {
+func SaveWAVFile(pcmData []byte, sampleRate, bitDepth, channels int, directory string) (string, error) {
 	wavData, err := EncodeWAV(pcmData, sampleRate, bitDepth, channels)
 	if err != nil {
 		return "", fmt.Errorf("failed to encode WAV: %w", err)
 	}
 
-	dir := "./data/tts"
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(directory, 0755); err != nil {
 		return "", fmt.Errorf("failed to create tts directory: %w", err)
 	}
 
-	tmpFile, err := os.CreateTemp(dir, "tts-*.wav")
+	tmpFile, err := os.CreateTemp(directory, "tts-*.wav")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}

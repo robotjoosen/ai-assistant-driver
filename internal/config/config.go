@@ -17,22 +17,23 @@ var (
 type Config struct {
 	ESPHomeAddress string `env:"ESP_HOME_ADDRESS"`
 	LogLevel       string `env:"LOG_LEVEL"`
-	Wyoming        WyomingConfig
+	Conversational ConversationalConfig
 	VAD            VadConfig
 	AI             AIConfig
 }
 
-type WyomingConfig struct {
-	Host     string `env:"WYOMING_HOST"`
-	Port     int    `env:"WYOMING_PORT"`
-	Language string `env:"WYOMING_LANGUAGE"`
+type ConversationalConfig struct {
+	Host        string `env:"STT_HOST"`
+	Port        int    `env:"STT_PORT"`
+	Language    string `env:"STT_LANGUAGE"`
+	StoragePath string `env:"TTS_STORAGE_PATH"`
 
-	PiperHost     string `env:"PIPER_HOST"`
-	PiperPort     int    `env:"PIPER_PORT"`
-	PiperLanguage string `env:"PIPER_LANGUAGE"`
+	SynthesizerHost     string `env:"TTS_HOST"`
+	SynthesizerPort     int    `env:"TTS_PORT"`
+	SynthesizerLanguage string `env:"TTS_LANGUAGE"`
 
-	HTTPHost string `env:"HTTP_HOST"`
-	HTTPPort int    `env:"HTTP_PORT"`
+	HTTPHost string `env:"TTS_HTTP_HOST"`
+	HTTPPort int    `env:"TTS_HTTP_PORT"`
 }
 
 type VadConfig struct {
@@ -56,15 +57,16 @@ func Load() (*Config, error) {
 
 	cfg := &Config{
 		LogLevel: "info",
-		Wyoming: WyomingConfig{
-			Host:          "localhost",
-			Port:          10300,
-			Language:      "en",
-			PiperHost:     "localhost",
-			PiperPort:     10200,
-			PiperLanguage: "en",
-			HTTPHost:      "0.0.0.0",
-			HTTPPort:      8080,
+		Conversational: ConversationalConfig{
+			Host:                "localhost",
+			Port:                10300,
+			Language:            "en",
+			StoragePath:         "data/tts",
+			SynthesizerHost:     "localhost",
+			SynthesizerPort:     10200,
+			SynthesizerLanguage: "en",
+			HTTPHost:            "0.0.0.0",
+			HTTPPort:            8080,
 		},
 		VAD: VadConfig{
 			ThresholdRatio: 2.5,

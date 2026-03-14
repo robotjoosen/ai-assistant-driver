@@ -6,7 +6,7 @@ import (
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
-	"github.com/robotjoosen/ai-assistant-driver/internal/transcriber"
+	"github.com/robotjoosen/ai-assistant-driver/internal/stt"
 	"github.com/robotjoosen/ai-assistant-driver/internal/tts"
 )
 
@@ -41,10 +41,15 @@ type ErrorEvent struct {
 }
 
 type Config struct {
-	Transcriber    transcriber.Transcriber
+	STT            stt.Transcriber
 	AIClient       ai.Client
 	TTSSynthesizer tts.Synthesizer
 	TTSServer      *tts.Server
+	Conversational ConversationalConfig
+}
+
+type ConversationalConfig struct {
+	StoragePath string
 }
 
 type Controller struct {

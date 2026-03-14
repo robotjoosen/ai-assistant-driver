@@ -27,14 +27,14 @@ func main() {
 	}
 	shutdownMgr.Add(func() { esphomeClient.Close() })
 
-	transcriberClient, err := newTranscriber(cfg)
+	sttClient, err := newSTTTranscriber(cfg)
 	if err != nil {
 		slog.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()
 		<-shutdownMgr.Done()
 		return
 	}
-	shutdownMgr.Add(func() { transcriberClient.Close() })
+	shutdownMgr.Add(func() { sttClient.Close() })
 
 	aiClient, err := newAIClient(cfg)
 	if err != nil {
@@ -55,10 +55,13 @@ func main() {
 
 	ctrl := controller.New(
 		controller.Config{
-			Transcriber:    transcriberClient,
+			STT:            sttClient,
 			AIClient:       aiClient,
 			TTSSynthesizer: ttsSynthesizer,
 			TTSServer:      ttsServer,
+			Conversational: controller.ConversationalConfig{
+				StoragePath: cfg.Conversational.StoragePath,
+			},
 		},
 		esphomeClient.Events(),
 		esphomeClient.AudioEvents(),

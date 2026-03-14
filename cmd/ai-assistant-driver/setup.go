@@ -10,7 +10,7 @@ import (
 	"github.com/robotjoosen/ai-assistant-driver/internal/ai/ollama"
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
-	"github.com/robotjoosen/ai-assistant-driver/internal/transcriber"
+	"github.com/robotjoosen/ai-assistant-driver/internal/stt"
 	"github.com/robotjoosen/ai-assistant-driver/internal/tts"
 )
 
@@ -49,17 +49,17 @@ func connectToESPHome(shutdownCtx context.Context, address string) (*esphome.Cli
 	return client, nil
 }
 
-func newTranscriber(cfg *config.Config) (transcriber.Transcriber, error) {
-	if cfg.Wyoming.Host == "" && cfg.Wyoming.Port == 0 {
-		return nil, fmt.Errorf("Wyoming configuration is required. Please set WYOMING_HOST and WYOMING_PORT")
+func newSTTTranscriber(cfg *config.Config) (stt.Transcriber, error) {
+	if cfg.Conversational.Host == "" && cfg.Conversational.Port == 0 {
+		return nil, fmt.Errorf("STT configuration is required. Please set STT_HOST and STT_PORT")
 	}
 
-	transcriberClient, err := transcriber.NewTranscriber(cfg.Wyoming, cfg.VAD)
+	sttClient, err := stt.NewTranscriber(cfg.Conversational, cfg.VAD)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize Wyoming transcriber: %w", err)
+		return nil, fmt.Errorf("failed to initialize STT: %w", err)
 	}
 
-	return transcriberClient, nil
+	return sttClient, nil
 }
 
 func newAIClient(cfg *config.Config) (ai.Client, error) {
@@ -77,17 +77,17 @@ func newAIClient(cfg *config.Config) (ai.Client, error) {
 }
 
 func newTTSSynthesizer(cfg *config.Config) (tts.Synthesizer, *tts.Server, error) {
-	synthesizer, err := tts.NewSynthesizer(cfg.Wyoming)
+	synthesizer, err := tts.NewSynthesizer(cfg.Conversational)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize TTS synthesizer: %w", err)
 	}
 
-	server := tts.NewServer(cfg.Wyoming.HTTPHost, cfg.Wyoming.HTTPPort)
+	server := tts.NewServer(cfg.Conversational.HTTPHost, cfg.Conversational.HTTPPort)
 	if err := server.Start(); err != nil {
 		return nil, nil, fmt.Errorf("failed to start TTS server: %w", err)
 	}
 
-	slog.Info("TTS synthesizer initialized", "piper_host", cfg.Wyoming.PiperHost, "piper_port", cfg.Wyoming.PiperPort)
+	slog.Info("TTS synthesizer initialized", "tts_host", cfg.Conversational.SynthesizerHost, "tts_port", cfg.Conversational.SynthesizerPort)
 	slog.Info("TTS server started", "url", server.URL())
 
 	return synthesizer, server, nil

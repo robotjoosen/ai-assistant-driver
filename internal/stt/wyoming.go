@@ -1,4 +1,4 @@
-package transcriber
+package stt
 
 import (
 	"context"
@@ -12,13 +12,13 @@ import (
 )
 
 const (
-	DefaultWyomingPort = 10300
-	AudioSampleRate    = 16000
-	AudioBitDepth      = 2
-	AudioChannels      = 1
+	DefaultSTTPort  = 10300
+	AudioSampleRate = 16000
+	AudioBitDepth   = 2
+	AudioChannels   = 1
 )
 
-type WyomingTranscriber struct {
+type STTTranscriber struct {
 	client         *wyoming.Client
 	host           string
 	port           int
@@ -31,7 +31,7 @@ type WyomingTranscriber struct {
 	transcribeSent bool
 }
 
-func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig) (Transcriber, error) {
+func NewTranscriber(cfg config.ConversationalConfig, vadCfg config.VadConfig) (Transcriber, error) {
 	host := cfg.Host
 	if host == "" {
 		host = "localhost"
@@ -39,7 +39,7 @@ func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig) (Transcri
 
 	port := cfg.Port
 	if port == 0 {
-		port = DefaultWyomingPort
+		port = DefaultSTTPort
 	}
 
 	language := cfg.Language
@@ -52,7 +52,7 @@ func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig) (Transcri
 		vad.WithMinSilenceMs(vadCfg.MinSilenceMs),
 	)
 
-	return &WyomingTranscriber{
+	return &STTTranscriber{
 		host:        host,
 		port:        port,
 		language:    language,
@@ -60,7 +60,7 @@ func NewTranscriber(cfg config.WyomingConfig, vadCfg config.VadConfig) (Transcri
 	}, nil
 }
 
-func (t *WyomingTranscriber) Connect(ctx context.Context) error {
+func (t *STTTranscriber) Connect(ctx context.Context) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -83,40 +83,40 @@ func (t *WyomingTranscriber) Connect(ctx context.Context) error {
 	t.audioSent = false
 	t.transcribeSent = false
 
-	slog.Info("connected to Wyoming service", "host", t.host, "port", t.port)
+	slog.Info("connected to STT service", "host", t.host, "port", t.port)
 
 	return nil
 }
 
-func (t *WyomingTranscriber) SendAudio(audioData []byte) error {
+func (t *STTTranscriber) SendAudio(audioData []byte) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	if t.client == nil || !t.connected {
-		return fmt.Errorf("not connected to Wyoming service")
+		return fmt.Errorf("not connected to STT service")
 	}
 
 	if !t.transcribeSent {
-		slog.Debug("sending transcribe event to Wyoming", "language", t.language)
+		slog.Debug("sending transcribe event to STT", "language", t.language)
 		event := wyoming.NewTranscribeEvent(t.language)
 		if err := t.client.WriteEvent(event, nil); err != nil {
 			return fmt.Errorf("failed to send transcribe: %w", err)
 		}
 		t.transcribeSent = true
-		slog.Debug("transcribe event sent to Wyoming")
+		slog.Debug("transcribe event sent to STT")
 	}
 
 	if !t.audioSent {
-		slog.Debug("sending audio-start to Wyoming", "rate", AudioSampleRate, "width", AudioBitDepth, "channels", AudioChannels)
+		slog.Debug("sending audio-start to STT", "rate", AudioSampleRate, "width", AudioBitDepth, "channels", AudioChannels)
 		event := wyoming.NewAudioStartEvent(AudioSampleRate, AudioBitDepth, AudioChannels)
 		if err := t.client.WriteEvent(event, nil); err != nil {
 			return fmt.Errorf("failed to send audio-start: %w", err)
 		}
 		t.audioSent = true
-		slog.Debug("audio-start sent to Wyoming")
+		slog.Debug("audio-start sent to STT")
 	}
 
-	slog.Debug("sending audio-chunk to Wyoming", "size", len(audioData))
+	slog.Debug("sending audio-chunk to STT", "size", len(audioData))
 	event := wyoming.NewAudioChunkEvent(AudioSampleRate, AudioBitDepth, AudioChannels, 0, len(audioData))
 	if err := t.client.WriteEvent(event, audioData); err != nil {
 		t.connected = false
@@ -130,17 +130,17 @@ func (t *WyomingTranscriber) SendAudio(audioData []byte) error {
 		}
 	}
 
-	slog.Debug("audio-chunk sent to Wyoming", "size", len(audioData))
+	slog.Debug("audio-chunk sent to STT", "size", len(audioData))
 
 	return nil
 }
 
-func (t *WyomingTranscriber) Recv() (*Transcript, error) {
+func (t *STTTranscriber) Recv() (*Transcript, error) {
 	if t.client == nil || !t.connected {
-		return nil, fmt.Errorf("not connected to Wyoming service")
+		return nil, fmt.Errorf("not connected to STT service")
 	}
 
-	slog.Debug("waiting for transcript from Wyoming...")
+	slog.Debug("waiting for transcript from STT...")
 
 	event, payload, err := t.client.ReadEvent()
 	if err != nil {
@@ -148,7 +148,7 @@ func (t *WyomingTranscriber) Recv() (*Transcript, error) {
 		return nil, fmt.Errorf("failed to read event: %w", err)
 	}
 
-	slog.Debug("received event from Wyoming", "type", event.Type)
+	slog.Debug("received event from STT", "type", event.Type)
 
 	switch event.Type {
 	case wyoming.EventTranscript:
@@ -172,7 +172,7 @@ func (t *WyomingTranscriber) Recv() (*Transcript, error) {
 	}
 }
 
-func (t *WyomingTranscriber) Close() error {
+func (t *STTTranscriber) Close() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -193,7 +193,7 @@ func (t *WyomingTranscriber) Close() error {
 	}
 
 	if t.client != nil {
-		slog.Info("closing connection to Wyoming service")
+		slog.Info("closing connection to STT service")
 		err := t.client.Close()
 		t.client = nil
 		return err
@@ -202,12 +202,12 @@ func (t *WyomingTranscriber) Close() error {
 	return nil
 }
 
-func (t *WyomingTranscriber) SendAudioStop() error {
+func (t *STTTranscriber) SendAudioStop() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	if t.client == nil || !t.connected {
-		return fmt.Errorf("not connected to Wyoming service")
+		return fmt.Errorf("not connected to STT service")
 	}
 
 	if !t.audioSent {
@@ -224,7 +224,7 @@ func (t *WyomingTranscriber) SendAudioStop() error {
 	return nil
 }
 
-func (t *WyomingTranscriber) Reset() {
+func (t *STTTranscriber) Reset() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -238,20 +238,20 @@ func (t *WyomingTranscriber) Reset() {
 	}
 }
 
-func (t *WyomingTranscriber) IsConnected() bool {
+func (t *STTTranscriber) IsConnected() bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.connected
 }
 
-func (t *WyomingTranscriber) SilenceDetected() bool {
+func (t *STTTranscriber) SilenceDetected() bool {
 	if t.vadDetector == nil {
 		return false
 	}
 	return t.vadDetector.SpeechEnded()
 }
 
-func (t *WyomingTranscriber) ResetVAD() {
+func (t *STTTranscriber) ResetVAD() {
 	if t.vadDetector != nil {
 		t.vadDetector.Reset()
 	}
