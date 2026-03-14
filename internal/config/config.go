@@ -23,10 +23,11 @@ type Config struct {
 }
 
 type ConversationalConfig struct {
-	Host        string `env:"STT_HOST"`
-	Port        int    `env:"STT_PORT"`
-	Language    string `env:"STT_LANGUAGE"`
-	StoragePath string `env:"TTS_STORAGE_PATH"`
+	Host               string `env:"STT_HOST"`
+	Port               int    `env:"STT_PORT"`
+	Language           string `env:"STT_LANGUAGE"`
+	StoragePath        string `env:"TTS_STORAGE_PATH"`
+	HistoryStoragePath string `env:"HISTORY_STORAGE_PATH"`
 
 	SynthesizerHost     string `env:"TTS_HOST"`
 	SynthesizerPort     int    `env:"TTS_PORT"`
@@ -62,6 +63,7 @@ func Load() (*Config, error) {
 			Port:                10300,
 			Language:            "en",
 			StoragePath:         "data/tts",
+			HistoryStoragePath:  "data/history",
 			SynthesizerHost:     "localhost",
 			SynthesizerPort:     10200,
 			SynthesizerLanguage: "en",

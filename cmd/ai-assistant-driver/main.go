@@ -53,12 +53,21 @@ func main() {
 	}
 	shutdownMgr.Add(func() { ttsServer.Close() })
 
+	historyManager, err := newHistoryManager(cfg, aiClient)
+	if err != nil {
+		slog.Error("setup failed", "error", err)
+		shutdownMgr.Cancel()
+		<-shutdownMgr.Done()
+		return
+	}
+
 	ctrl := controller.New(
 		controller.Config{
 			STT:            sttClient,
 			AIClient:       aiClient,
 			TTSSynthesizer: ttsSynthesizer,
 			TTSServer:      ttsServer,
+			HistoryManager: historyManager,
 			Conversational: controller.ConversationalConfig{
 				StoragePath: cfg.Conversational.StoragePath,
 			},

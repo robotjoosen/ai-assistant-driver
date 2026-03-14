@@ -10,6 +10,7 @@ import (
 	"github.com/robotjoosen/ai-assistant-driver/internal/ai/ollama"
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
+	"github.com/robotjoosen/ai-assistant-driver/internal/history"
 	"github.com/robotjoosen/ai-assistant-driver/internal/stt"
 	"github.com/robotjoosen/ai-assistant-driver/internal/tts"
 )
@@ -95,4 +96,15 @@ func newTTSSynthesizer(ctx context.Context, cfg *config.Config) (tts.Synthesizer
 	slog.Info("TTS server started", "url", server.URL())
 
 	return synthesizer, server, nil
+}
+
+func newHistoryManager(cfg *config.Config, aiClient ai.Client) (*history.ConversationManager, error) {
+	manager, err := history.NewConversationManager(cfg.Conversational.HistoryStoragePath, aiClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize history manager: %w", err)
+	}
+
+	slog.Info("history manager initialized", "storage_path", cfg.Conversational.HistoryStoragePath)
+
+	return manager, nil
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
+	"github.com/robotjoosen/ai-assistant-driver/internal/history"
 	"github.com/robotjoosen/ai-assistant-driver/internal/stt"
 	"github.com/robotjoosen/ai-assistant-driver/internal/tts"
 )
@@ -45,6 +46,7 @@ type Config struct {
 	AIClient       ai.Client
 	TTSSynthesizer tts.Synthesizer
 	TTSServer      *tts.Server
+	HistoryManager *history.ConversationManager
 	Conversational ConversationalConfig
 }
 

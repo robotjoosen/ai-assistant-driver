@@ -37,11 +37,16 @@ func NewClient(cfg Config) ai.Client {
 	}
 }
 
-func (c *OllamaClient) Chat(ctx context.Context, prompt string) (string, error) {
+func (c *OllamaClient) Chat(ctx context.Context, prompt string, conversationContext string) (string, error) {
+	fullPrompt := prompt
+	if conversationContext != "" {
+		fullPrompt = conversationContext + "\n\n" + prompt
+	}
+
 	stream := false
 	req := &api.GenerateRequest{
 		Model:  c.model,
-		Prompt: prompt,
+		Prompt: fullPrompt,
 		Stream: &stream,
 		Think:  &api.ThinkValue{Value: false},
 	}

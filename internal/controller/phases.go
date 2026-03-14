@@ -128,7 +128,7 @@ func (c *Controller) handleThinkingStart() {
 	c.phase = PhaseThinking
 	slog.Info("thinking phase started", "transcript", c.transcript)
 
-	thinkingPhase := phases.NewThinkingPhase(c.config.AIClient)
+	thinkingPhase := phases.NewThinkingPhase(c.config.AIClient, c.config.HistoryManager)
 	response := thinkingPhase.Run(context.Background(), c.transcript)
 
 	if response == "" {
@@ -147,6 +147,10 @@ func (c *Controller) handleThinkingStart() {
 		slog.Int("response_length", len(response)),
 		slog.String("response", response),
 	)
+
+	if c.config.HistoryManager != nil {
+		c.config.HistoryManager.AddMessage(c.transcript, c.llmResponse)
+	}
 
 	c.handleReplyStart()
 }
