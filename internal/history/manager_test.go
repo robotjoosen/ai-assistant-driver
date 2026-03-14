@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
 )
 
 type mockAIClient struct {
@@ -14,8 +16,8 @@ type mockAIClient struct {
 	err      error
 }
 
-func (m *mockAIClient) Chat(ctx context.Context, prompt string, context string) (string, error) {
-	return m.response, m.err
+func (m *mockAIClient) Chat(ctx context.Context, prompt string, context string, tools []ai.Tool) (string, []ai.ToolCall, error) {
+	return m.response, nil, m.err
 }
 
 func TestNewConversationManager_EmptyDirectory(t *testing.T) {

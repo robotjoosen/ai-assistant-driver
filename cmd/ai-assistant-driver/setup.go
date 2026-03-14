@@ -8,6 +8,7 @@ import (
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/ai"
 	"github.com/robotjoosen/ai-assistant-driver/internal/ai/ollama"
+	"github.com/robotjoosen/ai-assistant-driver/internal/ai/tools"
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
 	"github.com/robotjoosen/ai-assistant-driver/internal/history"
@@ -107,4 +108,18 @@ func newHistoryManager(cfg *config.Config, aiClient ai.Client) (*history.Convers
 	slog.Info("history manager initialized", "storage_path", cfg.Conversational.HistoryStoragePath)
 
 	return manager, nil
+}
+
+func newToolExecutor() *ai.ToolExecutor {
+	executor := ai.NewToolExecutor()
+
+	registeredTools := tools.All()
+	if len(registeredTools) > 0 {
+		executor.Register(registeredTools...)
+		slog.Info("tool executor initialized", "tool_count", len(registeredTools))
+	} else {
+		slog.Info("tool executor initialized", "tool_count", 0)
+	}
+
+	return executor
 }

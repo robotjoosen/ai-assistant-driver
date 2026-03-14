@@ -61,6 +61,8 @@ func main() {
 		return
 	}
 
+	toolExecutor := newToolExecutor()
+
 	ctrl := controller.New(
 		controller.Config{
 			STT:            sttClient,
@@ -68,6 +70,7 @@ func main() {
 			TTSSynthesizer: ttsSynthesizer,
 			TTSServer:      ttsServer,
 			HistoryManager: historyManager,
+			ToolExecutor:   toolExecutor,
 			Conversational: controller.ConversationalConfig{
 				StoragePath: cfg.Conversational.StoragePath,
 			},

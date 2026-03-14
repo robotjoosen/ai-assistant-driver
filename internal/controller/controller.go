@@ -47,6 +47,7 @@ type Config struct {
 	TTSSynthesizer tts.Synthesizer
 	TTSServer      *tts.Server
 	HistoryManager *history.ConversationManager
+	ToolExecutor   *ai.ToolExecutor
 	Conversational ConversationalConfig
 }
 

@@ -151,7 +151,7 @@ func (m *ConversationManager) summarize() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	newSummary, err := m.aiClient.Chat(ctx, prompt, "")
+	newSummary, _, err := m.aiClient.Chat(ctx, prompt, "", nil)
 	if err != nil {
 		slog.Warn("failed to generate summary, skipping", "error", err)
 		return
