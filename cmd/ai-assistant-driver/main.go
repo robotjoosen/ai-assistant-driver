@@ -27,7 +27,7 @@ func main() {
 	}
 	shutdownMgr.Add(func() { esphomeClient.Close() })
 
-	sttClient, err := newSTTTranscriber(cfg)
+	sttClient, err := newSTTTranscriber(shutdownMgr.Context(), cfg)
 	if err != nil {
 		slog.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()
@@ -44,7 +44,7 @@ func main() {
 		return
 	}
 
-	ttsSynthesizer, ttsServer, err := newTTSSynthesizer(cfg)
+	ttsSynthesizer, ttsServer, err := newTTSSynthesizer(shutdownMgr.Context(), cfg)
 	if err != nil {
 		slog.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()

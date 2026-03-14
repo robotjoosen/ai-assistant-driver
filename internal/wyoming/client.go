@@ -42,6 +42,13 @@ func (c *Client) Close() error {
 	return nil
 }
 
+func (c *Client) Ping() error {
+	if c.conn == nil {
+		return fmt.Errorf("connection is nil")
+	}
+	return nil
+}
+
 type jsonEvent struct {
 	Type          string          `json:"type"`
 	Data          json.RawMessage `json:"data,omitempty"`

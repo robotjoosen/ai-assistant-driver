@@ -1,7 +1,6 @@
 package stt
 
 import (
-	"context"
 	"time"
 )
 
@@ -13,7 +12,6 @@ type Transcript struct {
 }
 
 type Transcriber interface {
-	Connect(ctx context.Context) error
 	SendAudio(data []byte) error
 	SendAudioStop() error
 	Recv() (*Transcript, error)
@@ -21,5 +19,4 @@ type Transcriber interface {
 	Reset()
 	ResetVAD()
 	SilenceDetected() bool
-	IsConnected() bool
 }

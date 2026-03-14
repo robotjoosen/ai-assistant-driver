@@ -4,18 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
 	"github.com/robotjoosen/ai-assistant-driver/internal/wyoming"
 )
 
 type WyomingSynthesizer struct {
-	client    *wyoming.Client
-	host      string
-	port      int
-	language  string
-	connected bool
-	closed    bool
+	host     string
+	port     int
+	language string
 }
 
 func NewSynthesizer(cfg config.ConversationalConfig) (Synthesizer, error) {
@@ -47,36 +45,18 @@ func NewSynthesizer(cfg config.ConversationalConfig) (Synthesizer, error) {
 	}, nil
 }
 
-func (s *WyomingSynthesizer) Connect(ctx context.Context) error {
-	if s.connected {
-		return nil
-	}
-
-	slog.Debug("connecting to Piper", "host", s.host, "port", s.port)
+func (s *WyomingSynthesizer) Synthesize(ctx context.Context, text string) ([]byte, error) {
+	slog.Debug("connecting to Piper for synthesis", "host", s.host, "port", s.port)
 
 	client, err := wyoming.NewClient(s.host, s.port)
 	if err != nil {
-		return fmt.Errorf("failed to connect to Piper: %w", err)
+		return nil, fmt.Errorf("failed to connect to Piper: %w", err)
 	}
-
-	s.client = client
-	s.connected = true
-
-	slog.Info("connected to Piper TTS", "host", s.host, "port", s.port)
-
-	return nil
-}
-
-func (s *WyomingSynthesizer) Synthesize(ctx context.Context, text string) ([]byte, error) {
-	if !s.connected || s.client == nil {
-		if err := s.Connect(ctx); err != nil {
-			return nil, err
-		}
-	}
+	defer client.Close()
 
 	slog.Debug("sending synthesize event to Piper", "text", text, "text_length", len(text))
 	event := wyoming.NewSynthesizeEvent(text)
-	if err := s.client.WriteEvent(event, nil); err != nil {
+	if err := client.WriteEvent(event, nil); err != nil {
 		return nil, fmt.Errorf("failed to send synthesize event: %w", err)
 	}
 
@@ -88,11 +68,8 @@ func (s *WyomingSynthesizer) Synthesize(ctx context.Context, text string) ([]byt
 	var channels int
 
 	for {
-		evt, payload, err := s.client.ReadEvent()
+		evt, payload, err := client.ReadEventWithTimeout(120 * time.Second)
 		if err != nil {
-			s.client.Close()
-			s.client = nil
-			s.connected = false
 			return nil, fmt.Errorf("failed to read event from Piper: %w", err)
 		}
 
@@ -130,19 +107,5 @@ func (s *WyomingSynthesizer) Synthesize(ctx context.Context, text string) ([]byt
 }
 
 func (s *WyomingSynthesizer) Close() error {
-	if s.closed {
-		return nil
-	}
-
-	s.closed = true
-
-	if s.client != nil {
-		slog.Info("closing connection to Piper")
-		err := s.client.Close()
-		s.client = nil
-		s.connected = false
-		return err
-	}
-
 	return nil
 }

@@ -8,10 +8,6 @@ import (
 	"github.com/robotjoosen/ai-assistant-driver/internal/phases"
 )
 
-const (
-	maxSTTRetries = 3
-)
-
 func (c *Controller) handleVoiceAssistantEvent(event esphome.VoiceAssistantEvent) {
 	slog.Info("voice assistant event", "phase", event.Phase.String(), "error", event.Error)
 
@@ -67,16 +63,6 @@ func (c *Controller) handleListeningStart() {
 	transcriber.Reset()
 	transcriber.ResetVAD()
 
-	if err := transcriber.Connect(context.Background()); err != nil {
-		slog.Error("failed to connect to transcriber", "error", err)
-		c.sendError(ErrorEvent{
-			Phase:       PhaseListening,
-			Message:     err.Error(),
-			Recoverable: true,
-		})
-		return
-	}
-
 	c.phase = PhaseListening
 	slog.Info("listening phase started")
 
@@ -107,15 +93,15 @@ func (c *Controller) handleListeningEnd() {
 		return
 	}
 
+	if err := transcriber.Close(); err != nil {
+		slog.Error("failed to close STT connection", "error", err)
+	}
+
 	if transcript != nil && transcript.Text != "" {
 		slog.Info("transcription received", "text", transcript.Text, "final", transcript.IsFinal)
 		c.transcript = transcript.Text
 	} else {
 		c.transcript = ""
-	}
-
-	if err := transcriber.Close(); err != nil {
-		slog.Error("error closing transcriber", "error", err)
 	}
 
 	c.commands <- esphome.Command{
@@ -202,10 +188,6 @@ func (c *Controller) handleIdleOrError() {
 	}
 
 	slog.Info("transitioning to idle", "previous_phase", c.phase.String())
-
-	if c.config.STT.IsConnected() {
-		c.config.STT.Close()
-	}
 
 	c.phase = PhaseIdle
 	c.transcript = ""

@@ -51,7 +51,7 @@ func connectToESPHome(shutdownCtx context.Context, address string) (*esphome.Cli
 	return client, nil
 }
 
-func newSTTTranscriber(cfg *config.Config) (stt.Transcriber, error) {
+func newSTTTranscriber(ctx context.Context, cfg *config.Config) (stt.Transcriber, error) {
 	if cfg.Conversational.Host == "" && cfg.Conversational.Port == 0 {
 		return nil, fmt.Errorf("STT configuration is required. Please set STT_HOST and STT_PORT")
 	}
@@ -60,6 +60,8 @@ func newSTTTranscriber(cfg *config.Config) (stt.Transcriber, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize STT: %w", err)
 	}
+
+	slog.Info("STT service initialized", "host", cfg.Conversational.Host, "port", cfg.Conversational.Port)
 
 	return sttClient, nil
 }
@@ -78,7 +80,7 @@ func newAIClient(cfg *config.Config) (ai.Client, error) {
 	return client, nil
 }
 
-func newTTSSynthesizer(cfg *config.Config) (tts.Synthesizer, *tts.Server, error) {
+func newTTSSynthesizer(ctx context.Context, cfg *config.Config) (tts.Synthesizer, *tts.Server, error) {
 	synthesizer, err := tts.NewSynthesizer(cfg.Conversational)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize TTS synthesizer: %w", err)

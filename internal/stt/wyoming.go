@@ -1,10 +1,10 @@
 package stt
 
 import (
-	"context"
 	"fmt"
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
 	"github.com/robotjoosen/ai-assistant-driver/internal/vad"
@@ -26,7 +26,6 @@ type STTTranscriber struct {
 	vadDetector    *vad.Detector
 	mu             sync.Mutex
 	closed         bool
-	connected      bool
 	audioSent      bool
 	transcribeSent bool
 }
@@ -60,18 +59,12 @@ func NewTranscriber(cfg config.ConversationalConfig, vadCfg config.VadConfig) (T
 	}, nil
 }
 
-func (t *STTTranscriber) Connect(ctx context.Context) error {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.closed {
-		return fmt.Errorf("transcriber is closed")
-	}
-
+func (t *STTTranscriber) connect() error {
 	if t.client != nil {
-		t.client.Close()
-		t.client = nil
+		return nil
 	}
+
+	slog.Debug("connecting to STT service", "host", t.host, "port", t.port)
 
 	client, err := wyoming.NewClient(t.host, t.port)
 	if err != nil {
@@ -79,10 +72,6 @@ func (t *STTTranscriber) Connect(ctx context.Context) error {
 	}
 
 	t.client = client
-	t.connected = true
-	t.audioSent = false
-	t.transcribeSent = false
-
 	slog.Info("connected to STT service", "host", t.host, "port", t.port)
 
 	return nil
@@ -92,14 +81,21 @@ func (t *STTTranscriber) SendAudio(audioData []byte) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.client == nil || !t.connected {
-		return fmt.Errorf("not connected to STT service")
+	if t.closed {
+		return fmt.Errorf("transcriber is closed")
+	}
+
+	if t.client == nil {
+		if err := t.connect(); err != nil {
+			return fmt.Errorf("failed to connect to STT service: %w", err)
+		}
 	}
 
 	if !t.transcribeSent {
 		slog.Debug("sending transcribe event to STT", "language", t.language)
 		event := wyoming.NewTranscribeEvent(t.language)
 		if err := t.client.WriteEvent(event, nil); err != nil {
+			t.client = nil
 			return fmt.Errorf("failed to send transcribe: %w", err)
 		}
 		t.transcribeSent = true
@@ -110,6 +106,7 @@ func (t *STTTranscriber) SendAudio(audioData []byte) error {
 		slog.Debug("sending audio-start to STT", "rate", AudioSampleRate, "width", AudioBitDepth, "channels", AudioChannels)
 		event := wyoming.NewAudioStartEvent(AudioSampleRate, AudioBitDepth, AudioChannels)
 		if err := t.client.WriteEvent(event, nil); err != nil {
+			t.client = nil
 			return fmt.Errorf("failed to send audio-start: %w", err)
 		}
 		t.audioSent = true
@@ -119,7 +116,7 @@ func (t *STTTranscriber) SendAudio(audioData []byte) error {
 	slog.Debug("sending audio-chunk to STT", "size", len(audioData))
 	event := wyoming.NewAudioChunkEvent(AudioSampleRate, AudioBitDepth, AudioChannels, 0, len(audioData))
 	if err := t.client.WriteEvent(event, audioData); err != nil {
-		t.connected = false
+		t.client = nil
 		return fmt.Errorf("failed to send audio-chunk: %w", err)
 	}
 
@@ -136,15 +133,27 @@ func (t *STTTranscriber) SendAudio(audioData []byte) error {
 }
 
 func (t *STTTranscriber) Recv() (*Transcript, error) {
-	if t.client == nil || !t.connected {
-		return nil, fmt.Errorf("not connected to STT service")
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return nil, fmt.Errorf("transcriber is closed")
 	}
+
+	if t.client == nil {
+		if err := t.connect(); err != nil {
+			t.mu.Unlock()
+			return nil, fmt.Errorf("failed to connect to STT service: %w", err)
+		}
+	}
+	t.mu.Unlock()
 
 	slog.Debug("waiting for transcript from STT...")
 
-	event, payload, err := t.client.ReadEvent()
+	event, payload, err := t.client.ReadEventWithTimeout(60 * time.Second)
 	if err != nil {
-		t.connected = false
+		t.mu.Lock()
+		t.client = nil
+		t.mu.Unlock()
 		return nil, fmt.Errorf("failed to read event: %w", err)
 	}
 
@@ -182,17 +191,17 @@ func (t *STTTranscriber) Close() error {
 
 	t.closed = true
 
-	if t.client != nil && t.audioSent {
-		slog.Debug("sending audio-stop event")
-		event := wyoming.NewAudioStopEvent(0)
-		if err := t.client.WriteEvent(event, nil); err != nil {
-			slog.Warn("failed to send audio-stop", "error", err)
-		} else {
-			slog.Debug("audio-stop sent successfully")
-		}
-	}
-
 	if t.client != nil {
+		if t.audioSent {
+			slog.Debug("sending audio-stop event")
+			event := wyoming.NewAudioStopEvent(0)
+			if err := t.client.WriteEvent(event, nil); err != nil {
+				slog.Warn("failed to send audio-stop", "error", err)
+			} else {
+				slog.Debug("audio-stop sent successfully")
+			}
+		}
+
 		slog.Info("closing connection to STT service")
 		err := t.client.Close()
 		t.client = nil
@@ -206,7 +215,7 @@ func (t *STTTranscriber) SendAudioStop() error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.client == nil || !t.connected {
+	if t.client == nil || t.closed {
 		return fmt.Errorf("not connected to STT service")
 	}
 
@@ -229,19 +238,12 @@ func (t *STTTranscriber) Reset() {
 	defer t.mu.Unlock()
 
 	t.closed = false
-	t.connected = false
 	t.audioSent = false
 	t.transcribeSent = false
 	t.client = nil
 	if t.vadDetector != nil {
 		t.vadDetector.Reset()
 	}
-}
-
-func (t *STTTranscriber) IsConnected() bool {
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	return t.connected
 }
 
 func (t *STTTranscriber) SilenceDetected() bool {
