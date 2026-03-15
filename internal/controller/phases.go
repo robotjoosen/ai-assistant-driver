@@ -13,6 +13,11 @@ func (c *Controller) handleVoiceAssistantEvent(event esphome.VoiceAssistantEvent
 
 	switch event.Phase {
 	case esphome.VoiceAssistantPhaseListening:
+		if c.phase != PhaseIdle {
+			slog.Warn("unexpected VoiceAssistantPhaseListening event",
+				"current_phase", c.phase.String())
+			return
+		}
 		c.handleListeningStart()
 	case esphome.VoiceAssistantPhaseIdle, esphome.VoiceAssistantPhaseError:
 		c.handleIdleOrError()
@@ -163,7 +168,7 @@ func (c *Controller) handleReplyStart() {
 	c.phase = PhaseReply
 	slog.Info("reply phase started")
 
-	replyPhase := phases.NewReplyPhase(c.config.TTSSynthesizer, c.config.TTSServer, c.commands, c.config.Conversational.StoragePath)
+	replyPhase := phases.NewReplyPhase(c.config.TTSSynthesizer, nil, c.commands, c.config.Conversational.StoragePath)
 	cleanup, err := replyPhase.Run(context.Background(), c.llmResponse)
 	if err != nil {
 		slog.Error("reply phase failed", "error", err)

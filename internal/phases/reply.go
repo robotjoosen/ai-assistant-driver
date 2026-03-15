@@ -8,14 +8,18 @@ import (
 	"github.com/robotjoosen/ai-assistant-driver/internal/tts"
 )
 
+type WAVServer interface {
+	ServeWAV(filePath string) (string, func(), error)
+}
+
 type ReplyPhase struct {
 	synthesizer tts.Synthesizer
-	server      *tts.Server
+	server      WAVServer
 	commands    chan<- esphome.Command
 	storagePath string
 }
 
-func NewReplyPhase(synthesizer tts.Synthesizer, server *tts.Server, commands chan<- esphome.Command, storagePath string) *ReplyPhase {
+func NewReplyPhase(synthesizer tts.Synthesizer, server WAVServer, commands chan<- esphome.Command, storagePath string) *ReplyPhase {
 	return &ReplyPhase{
 		synthesizer: synthesizer,
 		server:      server,

@@ -22,6 +22,7 @@ type Config struct {
 	LLM            LLMConfig
 	OpenWrt        OpenWrtConfig
 	Weather        WeatherConfig
+	API            APIConfig
 }
 
 type ConversationalConfig struct {
@@ -63,6 +64,11 @@ type WeatherConfig struct {
 	Longitude float64 `env:"WEATHER_LONGITUDE"`
 }
 
+type APIConfig struct {
+	Enabled bool   `env:"API_ENABLED"`
+	APIKey  string `env:"API_KEY"`
+}
+
 func Load() (*Config, error) {
 	if err := godotenv.Load(); err != nil {
 		if !errors.Is(err, os.ErrNotExist) {
@@ -100,6 +106,9 @@ func Load() (*Config, error) {
 		Weather: WeatherConfig{
 			Latitude:  0,
 			Longitude: 0,
+		},
+		API: APIConfig{
+			Enabled: true,
 		},
 	}
 

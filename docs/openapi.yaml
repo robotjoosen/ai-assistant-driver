@@ -1,0 +1,278 @@
+openapi: 3.0.3
+info:
+  title: AI Assistant Driver API
+  version: 1.0.0
+  description: HTTP API for AI Assistant Driver
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+
+paths:
+  /api/status:
+    get:
+      summary: Get current assistant status
+      tags:
+        - Status
+      responses:
+        '200':
+          description: Current status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  phase:
+                    type: string
+                    description: Current assistant phase
+                  transcript:
+                    type: string
+                    description: Current transcript
+                  llm_response:
+                    type: string
+                    description: Current LLM response
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/tts:
+    post:
+      summary: Trigger text-to-speech
+      tags:
+        - TTS
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - text
+              properties:
+                text:
+                  type: string
+                  description: Text to synthesize
+                wait:
+                  type: boolean
+                  description: Wait for playback to complete
+                  default: false
+      responses:
+        '200':
+          description: TTS queued successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          $ref: '#/components/responses/PhaseConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/listen:
+    post:
+      summary: Trigger listening mode
+      description: |
+        Only works when phase is `idle`. Returns 409 Conflict if assistant is
+        in `listening`, `thinking`, or `reply` phase.
+      tags:
+        - Audio
+      responses:
+        '200':
+          description: Listening activated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '409':
+          $ref: '#/components/responses/PhaseConflict'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/lights:
+    post:
+      summary: Control lights
+      tags:
+        - Lights
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - action
+              properties:
+                action:
+                  type: string
+                  enum: [turn_on, turn_off]
+                  description: Light action
+                entity_id:
+                  type: string
+                  description: Home Assistant entity ID
+                brightness:
+                  type: integer
+                  minimum: 0
+                  maximum: 255
+                  description: Brightness level
+                color:
+                  type: object
+                  properties:
+                    r:
+                      type: integer
+                      minimum: 0
+                      maximum: 255
+                      description: Red component
+                    g:
+                      type: integer
+                      minimum: 0
+                      maximum: 255
+                      description: Green component
+                    b:
+                      type: integer
+                      minimum: 0
+                      maximum: 255
+                      description: Blue component
+      responses:
+        '200':
+          description: Light controlled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '405':
+          $ref: '#/components/responses/MethodNotAllowed'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+
+  /api/tts/audio/{filename}:
+    get:
+      summary: Get TTS audio file
+      tags:
+        - TTS
+      parameters:
+        - name: filename
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Audio filename
+      responses:
+        '200':
+          description: Audio file
+          content:
+            audio/wav:
+              schema:
+                type: string
+                format: binary
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  schemas:
+    SuccessResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+          example: TTS queued
+
+    Problem:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          description: A URI reference that identifies the problem type
+          example: /errors/bad-request
+        title:
+          type: string
+          description: A short, human-readable summary of the problem
+          example: Bad Request
+        status:
+          type: integer
+          description: The HTTP status code
+          example: 400
+        detail:
+          type: string
+          description: A human-readable explanation specific to this occurrence of the problem
+          example: Text is required
+
+  responses:
+    BadRequest:
+      description: Bad Request
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: /errors/bad-request
+            title: Bad Request
+            status: 400
+            detail: Text is required
+
+    MethodNotAllowed:
+      description: Method Not Allowed
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: /errors/method-not-allowed
+            title: Method Not Allowed
+            status: 405
+            detail: POST method is required
+
+    PhaseConflict:
+      description: Conflict - Phase not allowed for operation
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: /errors/phase-conflict
+            title: Phase Conflict
+            status: 409
+            detail: Cannot start listening in thinking phase
+            currentPhase: thinking
+            allowedPhases:
+              - idle
+
+    InternalServerError:
+      description: Internal Server Error
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: /errors/internal-server-error
+            title: Internal Server Error
+            status: 500
+            detail: Controller not configured
+
+    NotFound:
+      description: Not Found
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+          example:
+            type: /errors/not-found
+            title: Not Found
+            status: 404
+            detail: Audio file not found

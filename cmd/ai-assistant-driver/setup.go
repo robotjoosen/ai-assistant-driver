@@ -7,8 +7,10 @@ import (
 	"os"
 
 	"github.com/robotjoosen/ai-assistant-driver/internal/config"
+	"github.com/robotjoosen/ai-assistant-driver/internal/controller"
 	"github.com/robotjoosen/ai-assistant-driver/internal/esphome"
 	"github.com/robotjoosen/ai-assistant-driver/internal/history"
+	"github.com/robotjoosen/ai-assistant-driver/internal/http"
 	"github.com/robotjoosen/ai-assistant-driver/internal/llm"
 	"github.com/robotjoosen/ai-assistant-driver/internal/llm/ollama"
 	"github.com/robotjoosen/ai-assistant-driver/internal/stt"
@@ -84,21 +86,30 @@ func newLLMClient(cfg *config.Config) (llm.Client, error) {
 	return client, nil
 }
 
-func newTTSSynthesizer(ctx context.Context, cfg *config.Config) (tts.Synthesizer, *tts.Server, error) {
-	synthesizer, err := tts.NewSynthesizer(cfg.Conversational)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize TTS synthesizer: %w", err)
+func newHTTPServer(cfg *config.Config, ttsSynthesizer tts.Synthesizer, ctrl *controller.Controller) (*http.Server, error) {
+	server := http.NewServer(cfg.Conversational.HTTPHost, cfg.Conversational.HTTPPort)
+	server.SetTTSSynthesizer(ttsSynthesizer)
+	server.SetAPIKey(cfg.API.APIKey)
+	server.SetController(ctrl)
+
+	if err := server.Start(); err != nil {
+		return nil, fmt.Errorf("failed to start HTTP server: %w", err)
 	}
 
-	server := tts.NewServer(cfg.Conversational.HTTPHost, cfg.Conversational.HTTPPort)
-	if err := server.Start(); err != nil {
-		return nil, nil, fmt.Errorf("failed to start TTS server: %w", err)
+	slog.Info("HTTP server started", "url", server.URL())
+
+	return server, nil
+}
+
+func newTTSSynthesizer(ctx context.Context, cfg *config.Config) (tts.Synthesizer, error) {
+	synthesizer, err := tts.NewSynthesizer(cfg.Conversational)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize TTS synthesizer: %w", err)
 	}
 
 	slog.Info("TTS synthesizer initialized", "tts_host", cfg.Conversational.SynthesizerHost, "tts_port", cfg.Conversational.SynthesizerPort)
-	slog.Info("TTS server started", "url", server.URL())
 
-	return synthesizer, server, nil
+	return synthesizer, nil
 }
 
 func newHistoryManager(cfg *config.Config, llmClient llm.Client) (*history.ConversationManager, error) {

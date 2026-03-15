@@ -44,14 +44,13 @@ func main() {
 		return
 	}
 
-	ttsSynthesizer, ttsServer, err := newTTSSynthesizer(shutdownMgr.Context(), cfg)
+	ttsSynthesizer, err := newTTSSynthesizer(shutdownMgr.Context(), cfg)
 	if err != nil {
 		slog.Error("setup failed", "error", err)
 		shutdownMgr.Cancel()
 		<-shutdownMgr.Done()
 		return
 	}
-	shutdownMgr.Add(func() { ttsServer.Close() })
 
 	historyManager, err := newHistoryManager(cfg, llmClient)
 	if err != nil {
@@ -68,7 +67,6 @@ func main() {
 			STT:            sttClient,
 			LLMClient:      llmClient,
 			TTSSynthesizer: ttsSynthesizer,
-			TTSServer:      ttsServer,
 			HistoryManager: historyManager,
 			ToolExecutor:   toolExecutor,
 			Conversational: controller.ConversationalConfig{
@@ -80,6 +78,15 @@ func main() {
 		esphomeClient.MediaPlayerEvents(),
 		esphomeClient.Commands(),
 	)
+
+	httpServer, err := newHTTPServer(cfg, ttsSynthesizer, ctrl)
+	if err != nil {
+		slog.Error("setup failed", "error", err)
+		shutdownMgr.Cancel()
+		<-shutdownMgr.Done()
+		return
+	}
+	shutdownMgr.Add(func() { httpServer.Close() })
 
 	slog.Info("listening for voice assistant events and audio")
 
