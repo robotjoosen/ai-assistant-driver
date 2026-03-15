@@ -152,7 +152,7 @@ func (c *Controller) TriggerListening() error {
 		return fmt.Errorf("%w: current phase is %s, expected %s", ErrNotIdle, c.phase, PhaseIdle)
 	}
 	slog.Info("triggering listening mode")
-	c.commands <- esphome.Command{Type: esphome.CommandVoiceAssistantEnd}
+	c.commands <- esphome.Command{Type: esphome.CommandVoiceAssistantStart}
 	return nil
 }
 

@@ -506,6 +506,8 @@ func (c *Client) processCommand(cmd Command) {
 			payload = p
 		}
 		c.sendTTSEvent(false, payload)
+	case CommandVoiceAssistantStart:
+		c.sendVoiceAssistantStart()
 	case CommandVoiceAssistantEnd:
 		c.sendVoiceAssistantEnd()
 	case CommandVolumeUp:
@@ -614,6 +616,18 @@ func (c *Client) sendVoiceAssistantEnd() {
 
 	if err := c.esphomeClient.SendMessage(msgVoiceAssistantEvent, event); err != nil {
 		slog.Error("failed to send voice assistant end event", "error", err)
+	}
+}
+
+func (c *Client) sendVoiceAssistantStart() {
+	req := &api.VoiceAssistantRequest{
+		Start: true,
+	}
+
+	slog.Info("sending voice assistant start request to ESPHome")
+
+	if err := c.esphomeClient.SendMessage(msgVoiceAssistantRequest, req); err != nil {
+		slog.Error("failed to send voice assistant start request", "error", err)
 	}
 }
 

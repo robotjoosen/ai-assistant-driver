@@ -11,6 +11,7 @@ const (
 	CommandVADEnd
 	CommandTTSStart
 	CommandTTSEnd
+	CommandVoiceAssistantStart
 	CommandVoiceAssistantEnd
 	CommandVolumeUp
 	CommandVolumeDown
